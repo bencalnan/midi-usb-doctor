@@ -68,6 +68,7 @@ swift tools/diagnose-midi.swift
 `assets/midi-usb-doctor-icon-flat.png` is embedded as an Avalonia resource (`Assets/AppIcon.png`) and set as the window icon in `MainWindow.axaml`.
 
 - The resource is embedded and loads correctly; the app starts with it set.
+- The same image is shown in the window header to the left of the title, sized to the title block, so the branding is visible on every platform including macOS.
 - On Windows and Linux this icon will appear in the title bar and taskbar.
 - On macOS Avalonia ignores `Window.Icon` (its macOS backend implements it as a no-op), and macOS has no title-bar icons. When run via `dotnet run` the Dock shows the generic executable icon. A real Dock icon needs the app packaged as a `.app` bundle with an `.icns` file referenced from `Info.plist`, which is part of the packaging milestone.
 - The source PNG is 1254 px and about 1 MB, which roughly doubles the size of the app assembly. A 256 or 512 px copy is enough for the embedded icon; keep the full-size file for generating the `.icns`.
