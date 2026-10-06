@@ -21,15 +21,27 @@ public static class MidiPortPairer
     /// <summary>
     /// Groups endpoints into pairs by name. Endpoints are matched only with endpoints of
     /// the same name, so a device that has only an input never shifts other pairs.
+    /// Names are normalised first (see <see cref="MidiPortNaming"/>) so legacy Windows
+    /// "MIDIIN2 (device)" / "MIDIOUT2 (device)" pairs line up.
     /// H12 ports are listed first, then everything else, each in natural name order.
     /// </summary>
     public static IReadOnlyList<MidiPortPair> Pair(IEnumerable<MidiEndpoint> endpoints)
     {
         var pairs = new List<MidiPortPair>();
+        var endpointList = endpoints.ToList();
 
-        foreach (var group in endpoints.GroupBy(
-                     endpoint => endpoint.Name.Trim(),
-                     StringComparer.OrdinalIgnoreCase))
+        var normalized = endpointList.ToDictionary(
+            endpoint => endpoint,
+            endpoint => MidiPortNaming.Normalize(endpoint.Name));
+        var bareFirstPorts = MidiPortNaming.BareNamesWithNumberedSiblings(normalized.Values);
+
+        string NameFor(MidiEndpoint endpoint)
+        {
+            var name = normalized[endpoint];
+            return bareFirstPorts.Contains(name) ? $"{name} Port 1" : name;
+        }
+
+        foreach (var group in endpointList.GroupBy(NameFor, StringComparer.OrdinalIgnoreCase))
         {
             var inputs = group.Where(e => e.Direction == MidiEndpointDirection.Input).ToList();
             var outputs = group.Where(e => e.Direction == MidiEndpointDirection.Output).ToList();

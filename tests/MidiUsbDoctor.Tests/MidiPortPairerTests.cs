@@ -80,6 +80,51 @@ public sealed class MidiPortPairerTests
     }
 
     [Fact]
+    public void Legacy_windows_names_pair_and_number_like_other_platforms()
+    {
+        var pairs = MidiPortPairer.Pair(
+        [
+            Input("in1", "CME [H12]"),
+            Input("in2", "MIDIIN2 (CME [H12])"),
+            Input("in3", "MIDIIN3 (CME [H12])"),
+            Output("out1", "CME [H12]"),
+            Output("out2", "MIDIOUT2 (CME [H12])"),
+            Output("out3", "MIDIOUT3 (CME [H12])"),
+        ]);
+
+        Assert.Equal(3, pairs.Count);
+        Assert.Equal(["CME [H12] Port 1", "CME [H12] Port 2", "CME [H12] Port 3"], pairs.Select(p => p.Name).ToArray());
+        Assert.Equal(("in1", "out1"), (pairs[0].Input?.Id, pairs[0].Output?.Id));
+        Assert.Equal(("in2", "out2"), (pairs[1].Input?.Id, pairs[1].Output?.Id));
+        Assert.Equal(("in3", "out3"), (pairs[2].Input?.Id, pairs[2].Output?.Id));
+        Assert.All(pairs, pair => Assert.True(pair.IsH12));
+        Assert.Equal([1, 2, 3], pairs.Select(p => p.PortNumber).ToArray());
+    }
+
+    [Fact]
+    public void Windows_instance_prefix_is_ignored()
+    {
+        var pairs = MidiPortPairer.Pair(
+        [
+            Input("in", "2- MIDIIN2 (CME [H12])"),
+            Output("out", "2- MIDIOUT2 (CME [H12])"),
+        ]);
+
+        var pair = Assert.Single(pairs);
+        Assert.Equal("CME [H12] Port 2", pair.Name);
+        Assert.NotNull(pair.Input);
+        Assert.NotNull(pair.Output);
+    }
+
+    [Fact]
+    public void A_bare_name_without_numbered_siblings_is_left_alone()
+    {
+        var pairs = MidiPortPairer.Pair([Input("in", "Arturia KeyStep"), Output("out", "Arturia KeyStep")]);
+
+        Assert.Equal("Arturia KeyStep", Assert.Single(pairs).Name);
+    }
+
+    [Fact]
     public void Names_are_matched_ignoring_case_and_surrounding_whitespace()
     {
         var pairs = MidiPortPairer.Pair(
