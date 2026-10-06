@@ -21,6 +21,7 @@ public sealed class MidiPortPairViewModel : INotifyPropertyChanged
     private readonly MidiPortActivity _activity = new();
     private string? _inputError;
     private bool _isActive;
+    private string? _label;
 
     public MidiPortPairViewModel(MidiPortPair pair)
     {
@@ -37,6 +38,34 @@ public sealed class MidiPortPairViewModel : INotifyPropertyChanged
     public MidiEndpoint? Output => Pair.Output;
     public string DisplayName { get; }
     public MidiPortActivity Activity => _activity;
+
+    /// <summary>User-assigned device name, such as "Bass Station II". Null when unset.</summary>
+    public string? Label
+    {
+        get => _label;
+        set
+        {
+            var normalized = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+            if (_label == normalized)
+            {
+                return;
+            }
+
+            _label = normalized;
+            Raise(nameof(Label));
+            Raise(nameof(HasLabel));
+            Raise(nameof(Title));
+            Raise(nameof(Subtitle));
+        }
+    }
+
+    public bool HasLabel => _label is not null;
+
+    /// <summary>What the user sees first: the label when set, otherwise the port name.</summary>
+    public string Title => _label ?? DisplayName;
+
+    /// <summary>The port name, shown under the label when a label is set.</summary>
+    public string Subtitle => DisplayName;
 
     public string InputStatus =>
         _inputError is not null ? "Input error"

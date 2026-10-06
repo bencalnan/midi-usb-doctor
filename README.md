@@ -11,15 +11,17 @@ Early working foundation, reviewed 2026-10-06:
 - Lists CoreMIDI input and output endpoints and pairs them into port rows by name. H12 ports are shown first, other devices after.
 - Listens on every input at once. Each row shows an activity dot, the channels heard, and the last message, so playing an instrument identifies its port.
 - Decodes Note On/Off, Control Change, Program Change, Pitch Bend, pressure, Clock, transport and SysEx into a bounded live log. Selecting a row filters the log to that port, and a "Hide clock" toggle (on by default) keeps MIDI Clock out of the log while port rows still report that clock was seen.
-- Not yet implemented: device labels, guided tests, diagnostics, DAW recommendations, hot-plug handling, Windows support.
+- Select a port to give it a device name such as "Bass Station II". Names are saved to disk, restored on launch, and shown in place of the port name in the list and the log.
+- Not yet implemented: guided tests, diagnostics, DAW recommendations, hot-plug handling.
 
-The shipping target is Windows. macOS is the development platform, and the MIDI layer is behind a platform-neutral interface so a Windows adapter can be added without changing the UI or core.
+The shipping target is Windows. macOS is the development platform. The MIDI layer sits behind a platform-neutral interface with a CoreMIDI adapter for macOS and a WinMM adapter for Windows. The Windows adapter compiles but has not yet been run on a PC.
 
 Known gaps and the suggested order for tackling them are tracked in the brief under "Current status and known gaps".
 
 ## Requirements
 
-- macOS. Tested on Apple Silicon; see the Intel note in the brief before relying on it on an Intel Mac.
+- macOS for development. Tested on Apple Silicon; see the Intel note in the brief before relying on it on an Intel Mac.
+- Windows 10 or 11 for the target build. Untested so far; the first run should follow the checklist in the brief.
 - No system-wide .NET install or administrator access. The pinned SDK is installed into the repository by the setup script.
 
 ## Local development
@@ -50,8 +52,8 @@ The SDK is installed in `.dotnet/`, which is excluded from Git.
 
 | Path | Purpose |
 |---|---|
-| `src/MidiUsbDoctor.Core` | Platform-neutral MIDI endpoint and message records, the message decoder, port pairing and per-port activity tracking. No platform dependencies. `Cme/` holds the H12-specific bits. |
-| `src/MidiUsbDoctor.Midi` | The `IMidiService` abstraction and the macOS CoreMIDI adapter (hand-written P/Invoke, no third-party MIDI library). |
+| `src/MidiUsbDoctor.Core` | Platform-neutral MIDI endpoint and message records, the message decoder, port pairing, per-port activity tracking and the device label store. No platform dependencies. `Cme/` holds the H12-specific bits. |
+| `src/MidiUsbDoctor.Midi` | The `IMidiService` abstraction, a platform factory, the macOS CoreMIDI adapter and the Windows WinMM adapter. Both adapters are hand-written P/Invoke with no third-party MIDI library. |
 | `src/MidiUsbDoctor.App` | Avalonia desktop UI. Currently a single window with code-behind. |
 | `tests/MidiUsbDoctor.Tests` | xUnit tests for Core and the CoreMIDI adapter. |
 | `tools/diagnose-midi.swift` | Standalone CoreMIDI dump script, independent of the .NET app. |
@@ -65,6 +67,10 @@ The SDK is installed in `.dotnet/`, which is excluded from Git.
 ```bash
 swift tools/diagnose-midi.swift
 ```
+
+## Where labels are stored
+
+Device names live in `device-labels.json` under the application-data folder: `%APPDATA%\MidiUsbDoctor\` on Windows and `~/.config/MidiUsbDoctor/` on macOS. Delete the file to reset all names.
 
 ## App icon
 

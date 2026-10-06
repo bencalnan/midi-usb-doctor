@@ -15,13 +15,28 @@
         Icon="/Assets/AppIcon.png"
         Title="MIDI USB Doctor">
     <Window.Styles>
-        <Style Selector="Button#RefreshButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Style Selector="Button.accent-green">
+            <Setter Property="Background" Value="#238636" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="BorderBrush" Value="#2EA043" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button.accent-green:pointerover /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="#2EA043" />
             <Setter Property="Foreground" Value="#FFFFFF" />
         </Style>
-        <Style Selector="Button#RefreshButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Style Selector="Button.accent-green:pressed /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="#196C2E" />
             <Setter Property="Foreground" Value="#FFFFFF" />
+        </Style>
+        <Style Selector="Button.subtle">
+            <Setter Property="Background" Value="#21262D" />
+            <Setter Property="Foreground" Value="#C9D1D9" />
+            <Setter Property="BorderBrush" Value="#30363D" />
+        </Style>
+        <Style Selector="Button.subtle:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#30363D" />
+            <Setter Property="Foreground" Value="#F0F6FC" />
         </Style>
         <Style Selector="Button#ShowAllButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="#388BFD" />
@@ -68,19 +83,18 @@
                 </StackPanel>
                 <Button x:Name="RefreshButton" Grid.Column="2" Padding="18,10"
                         VerticalAlignment="Center" Content="Refresh devices"
-                        Background="#238636" Foreground="#FFFFFF" BorderBrush="#2EA043"
-                        FontWeight="SemiBold"
+                        Classes="accent-green"
                         Click="RefreshDevices_OnClick" />
             </Grid>
         </Border>
 
         <Grid Grid.Row="1" Margin="28" ColumnDefinitions="5*,6*" ColumnSpacing="20">
             <Border Padding="22" Background="#161B22" CornerRadius="10">
-                <Grid RowDefinitions="Auto,Auto,*,Auto">
+                <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
                     <TextBlock FontSize="18" FontWeight="SemiBold" Foreground="#F0F6FC"
                                Text="MIDI ports" />
                     <TextBlock x:Name="EndpointStatusText" Grid.Row="1" Margin="0,6,0,20"
-                               Foreground="#8B949E" Text="Checking CoreMIDI…" />
+                               Foreground="#8B949E" Text="Checking MIDI devices…" />
 
                     <Border Grid.Row="2" Padding="20" BorderBrush="#30363D" BorderThickness="1"
                             CornerRadius="8">
@@ -105,9 +119,15 @@
                                             <Border Grid.RowSpan="2" Width="10" Height="10"
                                                     VerticalAlignment="Center"
                                                     Background="{Binding ActivityBrush}" CornerRadius="5" />
-                                            <TextBlock Grid.Column="1" Foreground="#F0F6FC"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       Text="{Binding DisplayName}" />
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <TextBlock Foreground="#F0F6FC"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Text="{Binding Title}" />
+                                                <TextBlock FontSize="11" Foreground="#6E7681"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           IsVisible="{Binding HasLabel}"
+                                                           Text="{Binding Subtitle}" />
+                                            </StackPanel>
                                             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8"
                                                         VerticalAlignment="Center">
                                                 <TextBlock FontSize="12" Foreground="#8B949E"
@@ -136,7 +156,28 @@
                         </Grid>
                     </Border>
 
-                    <Button x:Name="ShowAllButton" Grid.Row="3" Margin="0,16,0,0"
+                    <Border x:Name="LabelEditor" Grid.Row="3" Margin="0,16,0,0" Padding="14"
+                            Background="#0D1117" CornerRadius="8" IsVisible="False">
+                        <StackPanel Spacing="8">
+                            <TextBlock x:Name="LabelEditorTitle" FontSize="12" Foreground="#8B949E"
+                                       TextTrimming="CharacterEllipsis"
+                                       Text="Device connected to this port" />
+                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                <TextBox x:Name="LabelTextBox" PlaceholderText="e.g. Bass Station II"
+                                         KeyDown="LabelTextBox_OnKeyDown" />
+                                <Button x:Name="SaveLabelButton" Grid.Column="1" Padding="14,6"
+                                        VerticalAlignment="Stretch" Content="Save"
+                                        Classes="accent-green" Click="SaveLabel_OnClick" />
+                                <Button x:Name="ClearLabelButton" Grid.Column="2" Padding="14,6"
+                                        VerticalAlignment="Stretch" Content="Clear"
+                                        Classes="subtle" Click="ClearLabel_OnClick" />
+                            </Grid>
+                            <TextBlock x:Name="LabelStatusText" FontSize="12" Foreground="#8B949E"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <Button x:Name="ShowAllButton" Grid.Row="4" Margin="0,12,0,0"
                             HorizontalAlignment="Stretch" Padding="16,10"
                             Content="Showing all ports" IsEnabled="False"
                             Background="#1F6FEB" Foreground="#FFFFFF" BorderBrush="#388BFD"

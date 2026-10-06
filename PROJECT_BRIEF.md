@@ -188,6 +188,9 @@ Reviewed 2026-10-06 against the code on `main`; updated the same day after the a
 - Ports are paired by name (`MidiPortPairer` in Core, unit-tested), so a device with only an input no longer shifts other rows. H12 ports are listed first in numeric order, other devices after them.
 - Selecting a row filters the live log to that port; "Show all ports" clears the filter.
 - Messages are queued off the CoreMIDI thread and drained in batches on the UI thread, so bursts of clock or dense traffic do not schedule one UI update per message.
+- A "Hide clock" toggle (on by default) keeps MIDI Clock out of the log; port rows still report clock.
+- Device labels: selecting a port shows an inline editor. Labels are keyed by port name, stored as JSON under the user's application-data folder (`DeviceLabelStore` in Core, unit-tested), restored at startup, and kept for ports that are not currently connected.
+- A Windows adapter (`WinMmMidiService`) and a platform factory exist and compile. They are untested on Windows; see item 10.
 - The app icon asset is embedded and loads at startup (see item 9 below for what it does and does not affect).
 
 ### Gaps against the MVP scope
@@ -198,6 +201,7 @@ Reviewed 2026-10-06 against the code on `main`; updated the same day after the a
 4. **Packet stride assumes Apple Silicon.** The 4-byte alignment applied between packets matches the ARM definition of `MIDIPacketNext`. On Intel Macs CoreMIDI does not pad between packets, so multi-packet lists would be misread. Not a problem on the development machine, but it needs a runtime check or a note before Intel is claimed as supported.
 5. **No hot-plug.** The CoreMIDI client is created with no notification callback and `IMidiService` has no device-changed event, so connecting or disconnecting hardware requires a manual refresh.
 6. **No output path.** `IMidiService` has no send method. Milestone 4's outbound Note/CC tests will need one, plus the matching Note Off cleanup.
+10. **Windows adapter is unverified.** `WinMmMidiService` was written and compiled on macOS against the WinMM API (device enumeration, `midiInOpen` with a callback, short messages, SysEx buffers). It has never run on Windows. First run on a PC should check: device names, that the H12 ports pair up by name, that short messages and SysEx arrive, and that closing the app releases the ports. WinMM device IDs are indexes that can change between sessions, which is why labels are keyed by port name.
 7. ~~Selecting a port with no input leaves the previous monitor running.~~ Resolved 2026-10-06: selection only filters the log and no longer starts or stops monitoring.
 8. **Test coverage is thin** relative to the verification strategy below. Pairing and per-port activity tracking are now covered, but the decoder has three cases and no system messages, there is no fake `IMidiService` for discovery or high-volume tests, and the CoreMIDI test returns silently off macOS instead of being skipped.
 9. **App icon.** `Window.Icon` is set from an embedded PNG. This will work on Windows and Linux. On macOS Avalonia implements `Window.Icon` as a no-op and the Dock shows the generic icon when run from `dotnet run`; a Dock icon needs a `.app` bundle with an `.icns` file, which belongs with the packaging work. The embedded PNG is 1254 px and about 1 MB; a 256 or 512 px copy is sufficient.
@@ -208,9 +212,10 @@ The shipping target is Windows; the Mac is the development machine. That favours
 
 1. ~~Monitor all inputs at once and pair ports by name.~~ Done 2026-10-06.
 2. Fix multi-message packets and multi-packet SysEx in the CoreMIDI adapter, with decoder tests for each. The same packet-splitting logic will be needed by the Windows adapter.
-3. Windows `IMidiService` adapter, as soon as a PC is available to test on. Nothing in Core or the UI should need to change.
-4. Milestone 3 (labels and persistence) as planned.
-5. Mac-only items (Intel packet alignment, `.app` bundle and Dock icon) last.
+3. ~~Windows `IMidiService` adapter.~~ Written 2026-10-06 on WinMM; needs its first run on a PC (item 10).
+4. ~~Milestone 3 (labels and persistence).~~ Done 2026-10-06.
+5. Milestone 4: guided input test and plain-language result per labelled device, then outbound tests (needs a send method on `IMidiService` for both adapters).
+6. Mac-only items (Intel packet alignment, `.app` bundle and Dock icon) last.
 
 ## Feature roadmap
 
@@ -223,6 +228,8 @@ The first technical version is working on macOS:
 - Input/output port pairs displayed; with the H12 connected this is the eight `CME [H12] Port n` pairs
 - All inputs monitored at once, with per-port activity, detected channels and last message shown in the port list
 - Port pairing by endpoint name, H12 ports first
+- Device labels per port, saved to disk and restored on launch
+- Windows adapter on WinMM, compiled but not yet run on Windows
 - Live Note On, Note Off, CC, program change, pitch bend, clock, transport, and SysEx display
 - MIDI channel, note, velocity, controller, and value decoding
 - Bounded traffic history so busy MIDI streams do not freeze the UI
@@ -298,7 +305,7 @@ The app currently supports manual refresh. Automatic hot-plug and disconnect not
 
 The current version monitors every input at once, shows per-port activity and channels in the port list, and keeps a bounded live message history that can be filtered to one port.
 
-### Milestone 3: labels and profiles — next
+### Milestone 3: labels and profiles — done 2026-10-06
 
 - Let users name instruments and associate them with port pairs.
 - Persist the setup locally.
@@ -306,7 +313,9 @@ The current version monitors every input at once, shows per-port activity and ch
 
 **Success:** device labels survive an app restart and remain useful after reconnecting the hardware.
 
-### Milestone 4: guided tests and diagnostics — planned
+Labels are keyed by port name and stored in `device-labels.json` under the application-data folder. Ports that are absent keep their labels. Profiles (named sets of labels) were not needed yet and remain open.
+
+### Milestone 4: guided tests and diagnostics — next
 
 - Add a step-by-step input test.
 - Add safe outbound Note/CC tests with explicit port selection.

@@ -6,12 +6,12 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using MidiUsbDoctor.Core;
 using MidiUsbDoctor.Midi;
-using MidiUsbDoctor.Midi.MacOS;
 
 namespace MidiUsbDoctor.App;
 
@@ -26,6 +26,7 @@ public partial class MainWindow : Window
     private static readonly IBrush ErrorBrush = Brush.Parse("#F85149");
 
     private readonly IMidiService? _midiService;
+    private readonly DeviceLabelStore _labels;
     private readonly ObservableCollection<MidiPortPairViewModel> _ports = [];
     private readonly ObservableCollection<MidiTrafficRow> _traffic = [];
     private readonly List<MidiTrafficRow> _history = [];
@@ -44,7 +45,8 @@ public partial class MainWindow : Window
 
         PortsList.ItemsSource = _ports;
         TrafficList.ItemsSource = _traffic;
-        _midiService = OperatingSystem.IsMacOS() ? new CoreMidiService() : null;
+        _labels = DeviceLabelStore.LoadFrom(DeviceLabelStore.DefaultFilePath);
+        _midiService = MidiServiceFactory.CreateForCurrentPlatform();
 
         if (_midiService is not null)
         {
@@ -92,19 +94,78 @@ public partial class MainWindow : Window
         UpdateTrafficHelpText();
         ShowAllButton.IsEnabled = _filter is not null;
         ShowAllButton.Content = _filter is null ? "Showing all ports" : "Show all ports";
+        UpdateLabelEditor();
+    }
+
+    private void SaveLabel_OnClick(object? sender, RoutedEventArgs e) => SaveLabel();
+
+    private void ClearLabel_OnClick(object? sender, RoutedEventArgs e)
+    {
+        LabelTextBox.Text = string.Empty;
+        SaveLabel();
+    }
+
+    private void LabelTextBox_OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            SaveLabel();
+            e.Handled = true;
+        }
+    }
+
+    private void UpdateLabelEditor()
+    {
+        LabelEditor.IsVisible = _filter is not null;
+        if (_filter is null)
+        {
+            return;
+        }
+
+        LabelEditorTitle.Text = $"Device connected to {_filter.DisplayName}";
+        LabelTextBox.Text = _filter.Label ?? string.Empty;
+        LabelStatusText.Text = _filter.HasLabel
+            ? "Shown in place of the port name."
+            : "Give this port a name so results read as your instrument, not a port number.";
+    }
+
+    private void SaveLabel()
+    {
+        if (_filter is null)
+        {
+            return;
+        }
+
+        var label = LabelTextBox.Text?.Trim();
+        _filter.Label = label;
+        _labels.SetLabel(_filter.Pair.Name, label);
+
+        try
+        {
+            _labels.Save();
+            LabelStatusText.Text = string.IsNullOrEmpty(label)
+                ? "Name cleared."
+                : $"Saved. {_filter.Pair.Name} will show as {label} from now on.";
+        }
+        catch (Exception exception)
+        {
+            LabelStatusText.Text = $"Could not save: {exception.Message}";
+        }
+
+        UpdateTrafficHelpText();
     }
 
     private async Task RefreshEndpointsAsync()
     {
         if (_midiService is null)
         {
-            EndpointStatusText.Text = "CoreMIDI discovery is available on macOS.";
+            EndpointStatusText.Text = "MIDI is not supported on this operating system yet.";
             RefreshButton.IsEnabled = false;
             return;
         }
 
         RefreshButton.IsEnabled = false;
-        EndpointStatusText.Text = "Checking CoreMIDI…";
+        EndpointStatusText.Text = $"Checking {MidiServiceFactory.PlatformApiName}…";
 
         try
         {
@@ -121,7 +182,7 @@ public partial class MainWindow : Window
 
             foreach (var pair in pairs)
             {
-                var row = new MidiPortPairViewModel(pair);
+                var row = new MidiPortPairViewModel(pair) { Label = _labels.GetLabel(pair.Name) };
                 _ports.Add(row);
                 if (pair.Input is not null)
                 {
@@ -142,7 +203,7 @@ public partial class MainWindow : Window
         {
             EmptyEndpointsPanel.IsVisible = true;
             PortsList.IsVisible = false;
-            EndpointStatusText.Text = $"CoreMIDI discovery failed: {exception.Message}";
+            EndpointStatusText.Text = $"MIDI discovery failed: {exception.Message}";
             SetMonitorState("Error", ErrorBrush);
         }
         finally
@@ -241,12 +302,12 @@ public partial class MainWindow : Window
         }
         else
         {
-            TrafficHelpText.Text = $"Showing only {_filter.DisplayName}.{clockNote}";
+            TrafficHelpText.Text = $"Showing only {_filter.Title}.{clockNote}";
         }
 
         EmptyTrafficText.Text = _filter is null
             ? "Play a note to begin"
-            : $"No MIDI yet on {_filter.DisplayName}";
+            : $"No MIDI yet on {_filter.Title}";
     }
 
     private void SetMonitorState(string text, IBrush brush)
@@ -287,7 +348,7 @@ public partial class MainWindow : Window
             var trafficRow = new MidiTrafficRow(
                 message.EndpointId,
                 message.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff"),
-                row?.Pair.Name ?? message.EndpointId,
+                row?.Title ?? message.EndpointId,
                 decoded.Channel?.ToString() ?? "—",
                 decoded.Type,
                 string.IsNullOrWhiteSpace(decoded.Description) ? decoded.RawData : decoded.Description);
