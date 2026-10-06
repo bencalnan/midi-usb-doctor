@@ -15,14 +15,14 @@ Early working foundation, reviewed 2026-10-06:
 - Select a port and press "Test this device". The app listens for ten seconds while you play, then reports in plain language: port, channel, whether notes, controls and clock arrived, and what to try if not. If the instrument showed up on a different port during the test, it says which.
 - Not yet implemented: output (computer-to-instrument) tests, DAW recommendations, hot-plug handling.
 
-The shipping target is Windows. macOS is the development platform. The MIDI layer sits behind a platform-neutral interface with a CoreMIDI adapter for macOS and a WinMM adapter for Windows. The Windows adapter compiles but has not yet been run on a PC.
+The shipping targets are current Windows 11 and current macOS. macOS is the development platform. The MIDI layer sits behind a platform-neutral interface with a CoreMIDI adapter for macOS and a WinMM adapter for Windows; both have been run against the H12.
 
 Known gaps and the suggested order for tackling them are tracked in the brief under "Current status and known gaps".
 
 ## Requirements
 
 - macOS for development. Tested on Apple Silicon; see the Intel note in the brief before relying on it on an Intel Mac.
-- Windows 10 or 11 for the target build. Untested so far; the first run should follow the checklist in the brief.
+- Windows 11 (25H2 or later recommended, which includes Windows MIDI Services for shared port access). Confirmed working with the H12.
 - No system-wide .NET install or administrator access. The pinned SDK is installed into the repository by the setup script.
 
 ## Local development
