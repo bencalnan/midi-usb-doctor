@@ -132,6 +132,11 @@ public sealed class WinMmMidiService : IMidiService
             if (status != 0)
             {
                 contextHandle.Free();
+                if (status == NativeMethods.MmsyserrAllocated)
+                {
+                    throw new MidiPortInUseException(endpointId);
+                }
+
                 throw new InvalidOperationException($"Windows could not open the MIDI input: {DescribeError(status)}");
             }
 
@@ -364,6 +369,7 @@ public sealed class WinMmMidiService : IMidiService
         private const string WinMm = "winmm.dll";
 
         internal const uint CallbackFunction = 0x00030000;
+        internal const uint MmsyserrAllocated = 4; // "The specified device is already in use."
         internal const uint MimData = 0x3C3;
         internal const uint MimLongData = 0x3C4;
 

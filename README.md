@@ -13,6 +13,7 @@ Early working foundation, reviewed 2026-10-06:
 - Decodes Note On/Off, Control Change, Program Change, Pitch Bend, pressure, Clock, transport and SysEx into a bounded live log. Selecting a row filters the log to that port, and a "Hide clock" toggle (on by default) keeps MIDI Clock out of the log while port rows still report that clock was seen.
 - Select a port to record which instrument is on it, such as "Bass Station II", and which H12 socket it is plugged into, such as "USB host 3". Both are saved to disk, restored on launch, and shown in the port list; the instrument name also replaces the port name in the log.
 - Select a port and press "Test this device". The app listens for ten seconds while you play, then reports in plain language: port, channel, whether notes, controls and clock arrived, and what to try if not. If the instrument showed up on a different port during the test, it says which.
+- "Pause listening" in the header releases every port so a DAW or CME's UxMIDI Tools can use them, then "Resume listening" takes them back. Needed on Windows versions before Windows MIDI Services, where only one application can hold a port.
 - Not yet implemented: output (computer-to-instrument) tests, DAW recommendations, hot-plug handling.
 
 The shipping targets are current Windows 11 and current macOS. macOS is the development platform. The MIDI layer sits behind a platform-neutral interface with a CoreMIDI adapter for macOS and a WinMM adapter for Windows; both have been run against the H12.
@@ -22,7 +23,7 @@ Known gaps and the suggested order for tackling them are tracked in the brief un
 ## Requirements
 
 - macOS for development. Tested on Apple Silicon; see the Intel note in the brief before relying on it on an Intel Mac.
-- Windows 11 (25H2 or later recommended, which includes Windows MIDI Services for shared port access). Confirmed working with the H12.
+- Windows 11. Confirmed working with the H12 on 23H2. On 23H2 and 24H2 only one application can open a MIDI port at a time, so use "Pause listening" before opening a DAW or UxMIDI Tools. Windows 11 25H2 with Windows MIDI Services removes that limit.
 - No system-wide .NET install or administrator access. The pinned SDK is installed into the repository by the setup script.
 
 ## Local development
