@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MidiUsbDoctor.App/MidiUsbDoctor.App.csproj" />
+    <Project Path="src/MidiUsbDoctor.Core/MidiUsbDoctor.Core.csproj" />
+    <Project Path="src/MidiUsbDoctor.Midi/MidiUsbDoctor.Midi.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MidiUsbDoctor.Tests/MidiUsbDoctor.Tests.csproj" />
+  </Folder>
+</Solution>
