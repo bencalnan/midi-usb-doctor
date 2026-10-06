@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET (version from global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore MidiUsbDoctor.slnx
+
+      - name: Build
+        run: dotnet build MidiUsbDoctor.slnx --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test MidiUsbDoctor.slnx --no-build --configuration Release --verbosity normal
