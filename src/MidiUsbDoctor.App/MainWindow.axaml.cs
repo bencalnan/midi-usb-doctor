@@ -20,15 +20,18 @@ public partial class MainWindow : Window
     private const int MaximumVisibleRows = 250;
     private const int MaximumHistoryRows = 1000;
     private static readonly TimeSpan ActivityFlash = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan TestDuration = TimeSpan.FromSeconds(10);
     private static readonly IBrush IdleBrush = Brush.Parse("#484F58");
     private static readonly IBrush ListeningBrush = Brush.Parse("#D29922");
     private static readonly IBrush ReceivingBrush = Brush.Parse("#3FB950");
     private static readonly IBrush ErrorBrush = Brush.Parse("#F85149");
+    private static readonly IBrush TextBrush = Brush.Parse("#F0F6FC");
 
     private readonly IMidiService? _midiService;
     private readonly DeviceLabelStore _labels;
     private readonly ObservableCollection<MidiPortPairViewModel> _ports = [];
     private readonly ObservableCollection<MidiTrafficRow> _traffic = [];
+    private readonly ObservableCollection<DeviceTestLine> _testSummary = [];
     private readonly List<MidiTrafficRow> _history = [];
     private readonly Dictionary<string, MidiPortPairViewModel> _portsByInputId = [];
     private readonly List<string> _monitoredInputIds = [];
@@ -39,12 +42,20 @@ public partial class MainWindow : Window
     private MidiPortPairViewModel? _filter;
     private bool _hideClock = true;
 
+    // Device test state. A test listens to one row for a fixed window and then explains what it heard.
+    private MidiPortPairViewModel? _testRow;
+    private MidiPortActivity? _testActivity;
+    private readonly SortedSet<string> _testOtherPortsThatPlayed = new(StringComparer.OrdinalIgnoreCase);
+    private DateTimeOffset _testStartedAt;
+    private int _testSecondsShown = -1;
+
     public MainWindow()
     {
         InitializeComponent();
 
         PortsList.ItemsSource = _ports;
         TrafficList.ItemsSource = _traffic;
+        TestSummaryList.ItemsSource = _testSummary;
         _labels = DeviceLabelStore.LoadFrom(DeviceLabelStore.DefaultFilePath);
         _midiService = MidiServiceFactory.CreateForCurrentPlatform();
 
@@ -89,12 +100,139 @@ public partial class MainWindow : Window
 
     private void PortsList_OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
+        var previous = _filter;
         _filter = PortsList.SelectedItem as MidiPortPairViewModel;
+        if (_testRow is not null && !ReferenceEquals(_testRow, _filter) && previous is not null)
+        {
+            CancelTest();
+        }
+
         RebuildVisibleTraffic();
         UpdateTrafficHelpText();
         ShowAllButton.IsEnabled = _filter is not null;
         ShowAllButton.Content = _filter is null ? "Showing all ports" : "Show all ports";
         UpdateLabelEditor();
+        UpdateTestButton();
+    }
+
+    private void TestButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (_testRow is not null)
+        {
+            FinishTest();
+        }
+        else if (_filter?.Input is not null)
+        {
+            StartTest(_filter);
+        }
+    }
+
+    private void TestDismiss_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (_testRow is not null)
+        {
+            CancelTest();
+        }
+
+        TestCard.IsVisible = false;
+    }
+
+    private void StartTest(MidiPortPairViewModel row)
+    {
+        _testRow = row;
+        _testActivity = new MidiPortActivity();
+        _testOtherPortsThatPlayed.Clear();
+        _testStartedAt = DateTimeOffset.UtcNow;
+        _testSecondsShown = -1;
+
+        _testSummary.Clear();
+        TestHeadline.Foreground = TextBrush;
+        TestHeadline.Text = $"Testing {row.Title}…";
+        TestAdviceText.Text = string.Empty;
+        TestCard.IsVisible = true;
+        UpdateTestCountdown(DateTimeOffset.UtcNow);
+        UpdateTestButton();
+    }
+
+    private void CancelTest()
+    {
+        _testRow = null;
+        _testActivity = null;
+        TestCard.IsVisible = false;
+        UpdateTestButton();
+    }
+
+    private void FinishTest()
+    {
+        if (_testRow is null || _testActivity is null)
+        {
+            return;
+        }
+
+        var row = _testRow;
+        var result = DeviceTestEvaluator.Evaluate(
+            _testActivity,
+            row.Pair.Name,
+            row.Label,
+            row.Connection,
+            DateTimeOffset.UtcNow - _testStartedAt,
+            _testOtherPortsThatPlayed);
+
+        _testRow = null;
+        _testActivity = null;
+
+        TestHeadline.Text = result.Headline;
+        TestHeadline.Foreground = result.Status switch
+        {
+            DeviceTestStatus.Working => ReceivingBrush,
+            DeviceTestStatus.Partial => ListeningBrush,
+            _ => ErrorBrush,
+        };
+
+        _testSummary.Clear();
+        foreach (var line in result.Summary)
+        {
+            _testSummary.Add(line);
+        }
+
+        TestAdviceText.Text = result.Advice;
+        TestCard.IsVisible = true;
+        UpdateTestButton();
+    }
+
+    private void UpdateTestCountdown(DateTimeOffset now)
+    {
+        var remaining = TestDuration - (now - _testStartedAt);
+        if (remaining <= TimeSpan.Zero)
+        {
+            FinishTest();
+            return;
+        }
+
+        var seconds = (int)Math.Ceiling(remaining.TotalSeconds);
+        if (seconds == _testSecondsShown)
+        {
+            return;
+        }
+
+        _testSecondsShown = seconds;
+        var heard = _testActivity?.MessageCount ?? 0;
+        TestAdviceText.Text = heard == 0
+            ? $"Play a few notes and move a control on the instrument. {seconds}s left."
+            : $"Hearing it. Keep playing, and move a control too. {seconds}s left.";
+    }
+
+    private void UpdateTestButton()
+    {
+        if (_testRow is not null)
+        {
+            TestButton.Content = "Finish test now";
+            TestButton.IsEnabled = true;
+            return;
+        }
+
+        TestButton.Content = "Test this device";
+        TestButton.IsEnabled = _filter?.Input is not null && _monitoredInputIds.Count > 0;
     }
 
     private void SaveLabel_OnClick(object? sender, RoutedEventArgs e) => SaveDetails();
@@ -198,8 +336,10 @@ public partial class MainWindow : Window
             EmptyEndpointsPanel.IsVisible = !hasPorts;
             PortsList.IsVisible = hasPorts;
 
+            CancelTest();
             var listening = await StartMonitoringAllAsync();
             EndpointStatusText.Text = DescribePorts(listening);
+            UpdateTestButton();
             SetMonitorState(listening > 0 ? "Listening" : "Waiting", listening > 0 ? ListeningBrush : IdleBrush);
             UpdateTrafficHelpText();
         }
@@ -349,6 +489,18 @@ public partial class MainWindow : Window
             _portsByInputId.TryGetValue(message.EndpointId, out var row);
             row?.Record(message, decoded);
 
+            if (_testRow is not null && row is not null)
+            {
+                if (ReferenceEquals(row, _testRow))
+                {
+                    _testActivity?.Record(message.Timestamp, decoded);
+                }
+                else if (decoded.Type is "Note On" or "Control Change")
+                {
+                    _testOtherPortsThatPlayed.Add(row.Title);
+                }
+            }
+
             var trafficRow = new MidiTrafficRow(
                 message.EndpointId,
                 message.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff"),
@@ -388,6 +540,11 @@ public partial class MainWindow : Window
         foreach (var row in _ports)
         {
             row.Tick(now, ActivityFlash);
+        }
+
+        if (_testRow is not null)
+        {
+            UpdateTestCountdown(now);
         }
 
         if (_monitoredInputIds.Count > 0 &&
