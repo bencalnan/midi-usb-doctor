@@ -110,4 +110,4 @@ Issues and pull requests are welcome. The useful things to know:
 
 ## Licence
 
-To be decided before the first release.
+[MIT](LICENSE).
