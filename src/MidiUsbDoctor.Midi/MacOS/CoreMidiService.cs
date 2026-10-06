@@ -6,6 +6,13 @@ namespace MidiUsbDoctor.Midi.MacOS;
 
 public sealed class CoreMidiService : IMidiService
 {
+    private readonly Lock _sync = new();
+    private readonly Dictionary<string, uint> _endpointReferences = [];
+    private readonly Dictionary<string, Connection> _connections = [];
+    private uint _client;
+    private uint _inputPort;
+    private bool _disposed;
+
     public event EventHandler<MidiMessage>? MessageReceived;
 
     public Task<IReadOnlyList<MidiEndpoint>> GetEndpointsAsync(
@@ -20,37 +27,138 @@ public sealed class CoreMidiService : IMidiService
                 "CoreMIDI endpoint discovery is available only on macOS.");
         }
 
-        var endpoints = new List<MidiEndpoint>();
-        AddEndpoints(endpoints, MidiEndpointDirection.Input);
-        AddEndpoints(endpoints, MidiEndpointDirection.Output);
+        var discoveredEndpoints = new List<(MidiEndpoint Endpoint, uint Reference)>();
+        AddEndpoints(discoveredEndpoints, MidiEndpointDirection.Input);
+        AddEndpoints(discoveredEndpoints, MidiEndpointDirection.Output);
 
-        return Task.FromResult<IReadOnlyList<MidiEndpoint>>(endpoints);
+        lock (_sync)
+        {
+            foreach (var item in discoveredEndpoints)
+            {
+                _endpointReferences[item.Endpoint.Id] = item.Reference;
+            }
+        }
+
+        return Task.FromResult<IReadOnlyList<MidiEndpoint>>(
+            discoveredEndpoints.Select(item => item.Endpoint).ToArray());
     }
 
-    public Task StartMonitoringAsync(
+    public async Task StartMonitoringAsync(
         string endpointId,
-        CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException(
-            "CoreMIDI message monitoring will be implemented after endpoint discovery.");
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!OperatingSystem.IsMacOS())
+        {
+            throw new PlatformNotSupportedException("CoreMIDI monitoring is available only on macOS.");
+        }
+
+        if (!_endpointReferences.ContainsKey(endpointId))
+        {
+            await GetEndpointsAsync(cancellationToken);
+        }
+
+        lock (_sync)
+        {
+            if (_connections.ContainsKey(endpointId))
+            {
+                return;
+            }
+
+            if (!_endpointReferences.TryGetValue(endpointId, out var endpointReference))
+            {
+                throw new ArgumentException("The MIDI input endpoint is no longer available.", nameof(endpointId));
+            }
+
+            EnsureClientAndInputPort();
+
+            var context = new CallbackContext(this, endpointId);
+            var contextHandle = GCHandle.Alloc(context);
+            var contextPointer = GCHandle.ToIntPtr(contextHandle);
+            var status = NativeMethods.MIDIPortConnectSource(
+                _inputPort,
+                endpointReference,
+                contextPointer);
+
+            if (status != 0)
+            {
+                contextHandle.Free();
+                throw new InvalidOperationException($"CoreMIDI could not connect to the input (status {status}).");
+            }
+
+            _connections.Add(endpointId, new Connection(endpointReference, contextHandle));
+        }
+    }
 
     public Task StopMonitoringAsync(
         string endpointId,
-        CancellationToken cancellationToken = default) => Task.CompletedTask;
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_sync)
+        {
+            if (!_connections.Remove(endpointId, out var connection))
+            {
+                return Task.CompletedTask;
+            }
+
+            if (_inputPort != 0)
+            {
+                NativeMethods.MIDIPortDisconnectSource(_inputPort, connection.EndpointReference);
+            }
+
+            connection.ContextHandle.Free();
+        }
+
+        return Task.CompletedTask;
+    }
 
     public ValueTask DisposeAsync()
     {
-        _disposed = true;
-        MessageReceived = null;
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                return ValueTask.CompletedTask;
+            }
+
+            _disposed = true;
+
+            foreach (var connection in _connections.Values)
+            {
+                if (_inputPort != 0)
+                {
+                    NativeMethods.MIDIPortDisconnectSource(_inputPort, connection.EndpointReference);
+                }
+
+                connection.ContextHandle.Free();
+            }
+
+            _connections.Clear();
+
+            if (_inputPort != 0)
+            {
+                NativeMethods.MIDIPortDispose(_inputPort);
+                _inputPort = 0;
+            }
+
+            if (_client != 0)
+            {
+                NativeMethods.MIDIClientDispose(_client);
+                _client = 0;
+            }
+
+            MessageReceived = null;
+        }
+
         return ValueTask.CompletedTask;
     }
 
-    private void RaiseMessageReceived(MidiMessage message) =>
-        MessageReceived?.Invoke(this, message);
-
-    private bool _disposed;
-
     private static void AddEndpoints(
-        ICollection<MidiEndpoint> endpoints,
+        ICollection<(MidiEndpoint Endpoint, uint Reference)> endpoints,
         MidiEndpointDirection direction)
     {
         var count = direction == MidiEndpointDirection.Input
@@ -77,9 +185,100 @@ public sealed class CoreMidiService : IMidiService
                 ? $"coremidi:{uniqueId.Value}"
                 : $"coremidi:ref-{endpointReference}";
 
-            endpoints.Add(new MidiEndpoint(id, name, direction, manufacturer));
+            endpoints.Add((new MidiEndpoint(id, name, direction, manufacturer), endpointReference));
         }
     }
+
+    private void EnsureClientAndInputPort()
+    {
+        if (_client == 0)
+        {
+            var clientName = NativeMethods.CreateString("MIDI USB Doctor");
+            try
+            {
+                var status = NativeMethods.MIDIClientCreate(
+                    clientName,
+                    nint.Zero,
+                    nint.Zero,
+                    out _client);
+                ThrowForStatus(status, "create a CoreMIDI client");
+            }
+            finally
+            {
+                NativeMethods.CFRelease(clientName);
+            }
+        }
+
+        if (_inputPort == 0)
+        {
+            var portName = NativeMethods.CreateString("MIDI USB Doctor Input");
+            try
+            {
+                var status = NativeMethods.MIDIInputPortCreate(
+                    _client,
+                    portName,
+                    NativeMethods.ReadCallback,
+                    nint.Zero,
+                    out _inputPort);
+                ThrowForStatus(status, "create a CoreMIDI input port");
+            }
+            finally
+            {
+                NativeMethods.CFRelease(portName);
+            }
+        }
+    }
+
+    private static void ThrowForStatus(int status, string operation)
+    {
+        if (status != 0)
+        {
+            throw new InvalidOperationException($"CoreMIDI could not {operation} (status {status}).");
+        }
+    }
+
+    private static void ReceivePackets(
+        nint packetList,
+        nint readCallbackReference,
+        nint sourceConnectionReference)
+    {
+        if (packetList == nint.Zero || sourceConnectionReference == nint.Zero)
+        {
+            return;
+        }
+
+        var handle = GCHandle.FromIntPtr(sourceConnectionReference);
+        if (handle.Target is not CallbackContext context)
+        {
+            return;
+        }
+
+        var packetCount = Marshal.ReadInt32(packetList);
+
+        // CoreMIDI declares MIDIPacketList inside #pragma pack(push, 4), so the
+        // first MIDIPacket begins immediately after the UInt32 packet count.
+        var packet = nint.Add(packetList, 4);
+
+        for (var index = 0; index < packetCount; index++)
+        {
+            var length = (ushort)Marshal.ReadInt16(packet, 8);
+            if (length > 0)
+            {
+                var data = new byte[length];
+                Marshal.Copy(nint.Add(packet, 10), data, 0, length);
+                context.Service.MessageReceived?.Invoke(
+                    context.Service,
+                    new MidiMessage(context.EndpointId, DateTimeOffset.UtcNow, data));
+            }
+
+            var packetSize = (10 + length + 3) & ~3;
+            packet = nint.Add(packet, packetSize);
+        }
+    }
+
+    private sealed record CallbackContext(CoreMidiService Service, string EndpointId);
+
+    private sealed record Connection(uint EndpointReference, GCHandle ContextHandle);
 
     private static int? GetIntegerProperty(uint midiObject, string propertyName)
     {
@@ -137,6 +336,43 @@ public sealed class CoreMidiService : IMidiService
         private const string CoreMidi = "/System/Library/Frameworks/CoreMIDI.framework/CoreMIDI";
         private const string CoreFoundation = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
         internal const uint Utf8Encoding = 0x08000100;
+
+        internal delegate void MidiReadProc(
+            nint packetList,
+            nint readProcReference,
+            nint sourceConnectionReference);
+
+        internal static readonly MidiReadProc ReadCallback = ReceivePackets;
+
+        [DllImport(CoreMidi)]
+        internal static extern int MIDIClientCreate(
+            nint name,
+            nint notificationCallback,
+            nint notificationReference,
+            out uint client);
+
+        [DllImport(CoreMidi)]
+        internal static extern int MIDIClientDispose(uint client);
+
+        [DllImport(CoreMidi)]
+        internal static extern int MIDIInputPortCreate(
+            uint client,
+            nint portName,
+            MidiReadProc readCallback,
+            nint readCallbackReference,
+            out uint port);
+
+        [DllImport(CoreMidi)]
+        internal static extern int MIDIPortDispose(uint port);
+
+        [DllImport(CoreMidi)]
+        internal static extern int MIDIPortConnectSource(
+            uint port,
+            uint source,
+            nint sourceConnectionReference);
+
+        [DllImport(CoreMidi)]
+        internal static extern int MIDIPortDisconnectSource(uint port, uint source);
 
         [DllImport(CoreMidi)]
         internal static extern nuint MIDIGetNumberOfSources();

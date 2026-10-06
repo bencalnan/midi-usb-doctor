@@ -3,6 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:core="using:MidiUsbDoctor.Core"
+        xmlns:local="using:MidiUsbDoctor.App"
         mc:Ignorable="d"
         d:DesignWidth="1100"
         d:DesignHeight="720"
@@ -23,15 +24,17 @@
                 </StackPanel>
                 <Button x:Name="RefreshButton" Grid.Column="1" Padding="18,10"
                         VerticalAlignment="Center" Content="Refresh devices"
+                        Background="#238636" Foreground="#FFFFFF" BorderBrush="#2EA043"
+                        FontWeight="SemiBold"
                         Click="RefreshDevices_OnClick" />
             </Grid>
         </Border>
 
         <Grid Grid.Row="1" Margin="28" ColumnDefinitions="2*,3*" ColumnSpacing="20">
             <Border Padding="22" Background="#161B22" CornerRadius="10">
-                <Grid RowDefinitions="Auto,Auto,*">
+                <Grid RowDefinitions="Auto,Auto,*,Auto">
                     <TextBlock FontSize="18" FontWeight="SemiBold" Foreground="#F0F6FC"
-                               Text="MIDI endpoints" />
+                               Text="H12 virtual ports" />
                     <TextBlock x:Name="EndpointStatusText" Grid.Row="1" Margin="0,6,0,20"
                                Foreground="#8B949E" Text="Checking CoreMIDI…" />
 
@@ -48,17 +51,22 @@
                                            Text="Connect the H12, then refresh devices." />
                             </StackPanel>
 
-                            <ListBox x:Name="EndpointsList" IsVisible="False"
-                                     Background="Transparent" BorderThickness="0">
+                            <ListBox x:Name="PortsList" IsVisible="False"
+                                     Background="Transparent" BorderThickness="0"
+                                     SelectionChanged="PortsList_OnSelectionChanged">
                                 <ListBox.ItemTemplate>
-                                    <DataTemplate x:DataType="core:MidiEndpoint">
+                                    <DataTemplate x:DataType="local:MidiPortPairViewModel">
                                         <Grid Margin="0,5" ColumnDefinitions="Auto,*" ColumnSpacing="12">
                                             <Border Width="10" Height="10" VerticalAlignment="Center"
                                                     Background="#3FB950" CornerRadius="5" />
                                             <StackPanel Grid.Column="1">
-                                                <TextBlock Foreground="#F0F6FC" Text="{Binding Name}" />
-                                                <TextBlock FontSize="12" Foreground="#8B949E"
-                                                           Text="{Binding Direction}" />
+                                                <TextBlock Foreground="#F0F6FC" Text="{Binding DisplayName}" />
+                                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                                    <TextBlock FontSize="12" Foreground="#8B949E"
+                                                               Text="{Binding InputStatus}" />
+                                                    <TextBlock FontSize="12" Foreground="#8B949E"
+                                                               Text="{Binding OutputStatus}" />
+                                                </StackPanel>
                                             </StackPanel>
                                         </Grid>
                                     </DataTemplate>
@@ -66,6 +74,13 @@
                             </ListBox>
                         </Grid>
                     </Border>
+
+                    <Button x:Name="MonitorButton" Grid.Row="3" Margin="0,16,0,0"
+                            HorizontalAlignment="Stretch" Padding="16,10"
+                            Content="Select an input to monitor" IsEnabled="False"
+                            Background="#1F6FEB" Foreground="#FFFFFF" BorderBrush="#388BFD"
+                            FontWeight="SemiBold"
+                            Click="MonitorButton_OnClick" />
                 </Grid>
             </Border>
 
@@ -75,13 +90,14 @@
                         <TextBlock FontSize="18" FontWeight="SemiBold" Foreground="#F0F6FC"
                                    Text="Live MIDI traffic" />
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                            <Border Width="10" Height="10" VerticalAlignment="Center"
-                                    Background="#484F58" CornerRadius="5" />
-                            <TextBlock Foreground="#8B949E" Text="Waiting" />
+                            <Border x:Name="ActivityIndicator" Width="10" Height="10"
+                                    VerticalAlignment="Center" Background="#484F58" CornerRadius="5" />
+                            <TextBlock x:Name="MonitorStatusText" Foreground="#8B949E" Text="Waiting" />
                         </StackPanel>
                     </Grid>
-                    <TextBlock Grid.Row="1" Margin="0,6,0,20" Foreground="#8B949E"
-                               Text="Messages from the selected input will appear here." />
+                    <TextBlock x:Name="TrafficHelpText" Grid.Row="1" Margin="0,6,0,20"
+                               Foreground="#8B949E"
+                               Text="Select a port, then start monitoring." />
 
                     <Border Grid.Row="2" Padding="18" Background="#0D1117" CornerRadius="8">
                         <Grid RowDefinitions="Auto,*">
@@ -91,8 +107,25 @@
                                 <TextBlock Grid.Column="2" Foreground="#8B949E" Text="Type" />
                                 <TextBlock Grid.Column="3" Foreground="#8B949E" Text="Data" />
                             </Grid>
-                            <TextBlock Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            <TextBlock x:Name="EmptyTrafficText" Grid.Row="1"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
                                        Foreground="#484F58" Text="Play a note to begin" />
+                            <ListBox x:Name="TrafficList" Grid.Row="1" IsVisible="False"
+                                     Margin="0,10,0,0" Background="Transparent" BorderThickness="0">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="local:MidiTrafficRow">
+                                        <Grid Margin="0,4" ColumnDefinitions="120,100,120,*">
+                                            <TextBlock Foreground="#C9D1D9" Text="{Binding Time}" />
+                                            <TextBlock Grid.Column="1" Foreground="#C9D1D9"
+                                                       Text="{Binding Channel}" />
+                                            <TextBlock Grid.Column="2" Foreground="#58A6FF"
+                                                       Text="{Binding Type}" />
+                                            <TextBlock Grid.Column="3" Foreground="#C9D1D9"
+                                                       Text="{Binding Data}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </Grid>
                     </Border>
                 </Grid>
