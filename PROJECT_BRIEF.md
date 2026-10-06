@@ -2,7 +2,7 @@
 
 ## Project summary
 
-MIDI USB Doctor is a Windows desktop diagnostic tool for musicians using a CME H12MIDI Pro (and potentially other CME MIDI interfaces). It should make MIDI routing problems visible without requiring the user to understand raw MIDI or repeatedly inspect DAW settings.
+MIDI USB Doctor is a cross-platform desktop diagnostic tool for musicians using a CME H12MIDI Pro (and potentially other CME MIDI interfaces). It should make MIDI routing problems visible without requiring the user to understand raw MIDI or repeatedly inspect DAW settings. Version 1 will be developed on macOS with Avalonia and should preserve a clear path to Windows support.
 
 The intended experience is:
 
@@ -10,7 +10,7 @@ The intended experience is:
 
 The first release should answer three practical questions:
 
-1. Which Windows/CME virtual port is an instrument arriving on?
+1. Which operating-system/CME virtual port is an instrument arriving on?
 2. Which MIDI channel is it using?
 3. Is valid MIDI data reaching the computer?
 
@@ -25,9 +25,11 @@ The first release should answer three practical questions:
 ## Proposed technology
 
 - .NET 10
-- WPF desktop UI
-- Windows MIDI APIs / Windows MIDI Services
-- C# solution split into reusable core logic and the Windows UI
+- Avalonia desktop UI
+- A platform-neutral MIDI abstraction with macOS and Windows implementations
+- CoreMIDI-compatible access during macOS development
+- Windows MIDI APIs / Windows MIDI Services on Windows
+- C# solution split into reusable core logic, platform MIDI adapters, and the Avalonia UI
 
 Suggested solution structure:
 
@@ -39,10 +41,14 @@ MidiUsbDoctor
 │   ├── MidiAnalysis
 │   ├── Diagnostics
 │   └── DawConfiguration
+├── MidiUsbDoctor.Midi
+│   ├── Abstractions
+│   ├── MacOS
+│   └── Windows
 ├── MidiUsbDoctor.Cme
 │   ├── PortIdentification
 │   └── Routing
-├── MidiUsbDoctor.Wpf
+├── MidiUsbDoctor.App
 │   ├── Dashboard
 │   ├── DeviceTest
 │   ├── Results
@@ -54,7 +60,7 @@ MidiUsbDoctor
 
 ### Device discovery
 
-- Enumerate all MIDI input and output endpoints visible to Windows.
+- Enumerate all MIDI input and output endpoints visible to the host operating system.
 - Identify the H12MIDI Pro virtual input/output ports by their reported names.
 - Display endpoint availability and connection state.
 - Refresh safely when hardware is connected, disconnected, or restarted.
@@ -99,7 +105,7 @@ The app may attempt MIDI Device Inquiry via SysEx later, but manual labels must 
 
 For each labelled instrument, report:
 
-- Configured Windows input and output ports
+- Configured operating-system input and output ports
 - Detected MIDI channel or channels
 - Whether notes, CC, clock, and SysEx have been observed
 - Time of the most recent message
@@ -124,7 +130,7 @@ Clock:           Not detected
 The diagnostic engine should distinguish between conditions such as:
 
 - The instrument is not transmitting.
-- MIDI reaches the CME hardware but not the expected Windows virtual port.
+- MIDI reaches the CME hardware but not the expected operating-system virtual port.
 - MIDI is arriving on a different port or channel than expected.
 - Routing appears correct, but the DAW is probably listening to the wrong endpoint.
 - The port is unavailable or held exclusively by another application.
@@ -155,7 +161,7 @@ The generated recommendation should explain when Track, Sync, or Remote should d
 
 Use a single dashboard for the first release:
 
-| CME/Windows port | Device label | Detected channel | Latest traffic | Status |
+| CME/system port | Device label | Detected channel | Latest traffic | Status |
 |---|---|---:|---|---|
 | H12 Port 1 | Bass Station II | 1 | Note 54 | Receiving |
 | H12 Port 2 | Roland S-1 | 2 | CC 74 | Receiving |
@@ -173,12 +179,14 @@ Selecting a row should reveal:
 
 ### Milestone 1: endpoint discovery
 
-- Create the .NET 10 solution and WPF shell.
+- Create the .NET 10 solution and Avalonia shell on macOS.
+- Define the platform-neutral MIDI endpoint and message interfaces.
+- Implement the first MIDI adapter for macOS development, without leaking platform types into the core or UI.
 - Enumerate MIDI endpoints.
 - Identify and group H12 input/output port pairs.
 - Handle connection and disconnection events.
 
-**Success:** the app accurately lists the same endpoints Windows exposes for the H12.
+**Success:** the app accurately lists the H12 endpoints exposed on macOS, and the UI/core can use a Windows adapter without redesign.
 
 ### Milestone 2: live MIDI monitor
 
@@ -187,7 +195,7 @@ Selecting a row should reveal:
 - Display live activity by port and channel.
 - Add bounded buffering so sustained MIDI clock or dense traffic cannot freeze the UI.
 
-**Success:** playing each connected synth immediately identifies its Windows port, MIDI channel, and message type.
+**Success:** playing each connected synth immediately identifies its system MIDI port, MIDI channel, and message type.
 
 ### Milestone 3: labels and profiles
 
@@ -204,7 +212,7 @@ Selecting a row should reveal:
 - Track expected versus observed results.
 - Present actionable diagnoses.
 
-**Success:** a user can determine whether a failure is at the instrument, CME/Windows routing, channel selection, or DAW configuration layer.
+**Success:** a user can determine whether a failure is at the instrument, CME/system routing, channel selection, or DAW configuration layer.
 
 ### Milestone 5: DAW recommendations
 
@@ -250,22 +258,24 @@ The production model should support multiple detected channels and distinguish �
 - Unit-test diagnostic rules independently of physical hardware.
 - Use fake endpoint adapters for discovery, disconnect, and high-volume traffic tests.
 - Integration-test with the H12 and each connected instrument.
-- Compare enumerated endpoints with Windows and CME tooling.
+- Compare enumerated endpoints with macOS Audio MIDI Setup, Windows MIDI tooling, and CME tooling as each platform adapter is introduced.
 - Verify input detection for notes, CC, clock, transport, and SysEx.
 - Verify outbound tests use the explicitly selected destination and send Note Off cleanup.
 - Validate generated instructions in current Ableton Live and Cubase versions.
-- Test with a DAW open at the same time, especially when Windows MIDI Services multi-client support is available.
+- Test with a DAW open at the same time on macOS and Windows, especially when Windows MIDI Services multi-client support is available.
 
 ## Risks and open questions
 
-- The exact Windows MIDI API/package choice for .NET 10 needs a small technical spike.
+- The exact cross-platform MIDI package strategy needs a small technical spike. The core must not depend directly on either CoreMIDI or Windows MIDI types.
+- macOS is the v1 development environment, but Windows behaviour cannot be fully validated without a Windows test environment or CI runner.
+- Endpoint names and stable identifiers may differ between macOS and Windows.
 - Endpoint names and identifiers may change across drivers, USB ports, or reconnects.
 - Older MIDI stacks or drivers may allow only one client to open an endpoint.
 - MIDI clock can generate enough traffic to overwhelm an unbounded UI log.
-- A successful outbound send confirms the Windows port accepted data, not necessarily that the physical instrument received or acted on it.
+- A successful outbound send confirms the operating system accepted data for the port, not necessarily that the physical instrument received or acted on it.
 - Device Inquiry SysEx is optional and cannot be the only identification mechanism.
 - CME routing/filter configuration may use an undocumented protocol.
-- The H12's USB-host topology and its Windows virtual ports should be verified on the actual target hardware before hard-coding assumptions.
+- The H12's USB-host topology and its virtual ports should be verified on the actual target hardware on each supported operating system before hard-coding assumptions.
 
 ## Definition of a useful first release
 
