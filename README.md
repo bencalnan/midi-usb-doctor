@@ -6,6 +6,8 @@ Plug in your instruments, launch the app, play each one, and it tells you which 
 
 Built around the CME H12MIDI Pro multi-port interface, but it works with any MIDI device the operating system can see. Runs on macOS and Windows 11.
 
+![MIDI USB Doctor listening on eight H12 ports, with the Bass Station II labelled and its notes arriving on channel 3](assets/Screenshot.png)
+
 ## What it does
 
 - **Listens to every MIDI input at once.** Each port has a row with an activity light, the channels heard, and the last message. Play an instrument and its row lights up.
