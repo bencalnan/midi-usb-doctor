@@ -209,7 +209,7 @@ Reviewed 2026-10-06 against the code on `main`; updated the same day after the a
 
 ### Suggested order
 
-The shipping targets are current Windows 11 (25H2 or later, which includes Windows MIDI Services) and current macOS; the Mac is the development machine. Both targets give shared, multi-client MIDI port access and real per-port names, so the legacy Windows problems (one app per port, "MIDIIN2 (CME [H12])" style names that shift when the USB socket changes) are out of scope. They are noted here in case an older Windows machine is ever needed: the fixes would be a pause/release-ports control and name normalisation before pairing and label lookup.
+The shipping targets are current Windows 11 and current macOS; the Mac is the development machine. The test PC, however, runs Windows 11 Pro 23H2, which has the legacy MIDI stack: one application per port, no Windows MIDI Services (that needs 25H2 or later). Confirmed on 2026-10-06: with this app holding every H12 input, UxMIDI Tools loads but does not see the H12. So legacy Windows behaviour is in scope: a pause/release-ports control, a clear "another application has this port" message on rows that fail to open, and name normalisation before pairing and label lookup if the PC reports "MIDIIN2 (CME [H12])" style names. Upgrading the PC to 25H2 would remove the limit once Windows MIDI Services reaches it, but the app should not depend on that.
 
 1. ~~Monitor all inputs at once and pair ports by name.~~ Done 2026-10-06.
 2. Fix multi-message packets and multi-packet SysEx in the CoreMIDI adapter, with decoder tests for each. The same packet-splitting logic will be needed by the Windows adapter.
