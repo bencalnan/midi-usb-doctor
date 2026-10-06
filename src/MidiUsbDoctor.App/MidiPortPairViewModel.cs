@@ -130,6 +130,14 @@ public sealed class MidiPortPairViewModel : INotifyPropertyChanged
             _ => "Output not tested",
         };
 
+    /// <summary>true = output heard, false = not heard, null = not tested or not answered.</summary>
+    public bool? OutputConfirmed => _outputOutcome switch
+    {
+        OutputTestOutcome.Heard => true,
+        OutputTestOutcome.NotHeard => false,
+        _ => null,
+    };
+
     public void SetOutputOutcome(OutputTestOutcome? outcome)
     {
         _outputOutcome = outcome;

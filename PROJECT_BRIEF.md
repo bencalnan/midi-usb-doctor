@@ -192,6 +192,7 @@ Reviewed 2026-10-06 against the code on `main`; updated the same day after the a
 - Device labels: selecting a port shows an inline editor for the instrument name and the H12 socket it is plugged into ("USB host 3", "DIN 1"). Both are keyed by port name, stored as JSON under the user's application-data folder (`DeviceLabelStore` in Core, unit-tested), restored at startup, and kept for ports that are not currently connected.
 - A Windows adapter (`WinMmMidiService`) and a platform factory. Confirmed working on a Windows 11 PC with the H12 on 2026-10-06.
 - Pause/Resume listening releases and reopens every port, for Windows versions where only one application can hold a port. Rows held by another application read "Input in use elsewhere" with advice.
+- DAW settings: for the selected port, Ableton Live and Cubase settings generated from observed channels, notes, control changes, clock and the output test result, with Copy buttons and notes on when Sync and Remote should differ from the defaults (`DawSettingsGenerator` in Core, unit-tested).
 - Output test: "Test output" sends a short test note with a guaranteed Note Off and records the user's heard / not heard answer as the row's output status (`MidiTestNote`, `OutputTestEvaluator` in Core, unit-tested). The Windows adapter opens, sends and closes the output per message so it never holds an output a DAW might need.
 - Guided input test: "Test input" listens to the selected port for ten seconds, then shows a result card with status (Working, Connected but no notes or controls, Nothing received), connection, channel, notes, controls, clock, and advice. If nothing arrived but another port received notes or controls during the test, the advice names that port, which covers the "arriving on a different port than expected" diagnosis. Logic is `DeviceTestEvaluator` in Core, unit-tested.
 - The app icon asset is embedded and loads at startup (see item 9 below for what it does and does not affect).
@@ -217,7 +218,7 @@ The shipping targets are current Windows 11 and current macOS; the Mac is the de
 2. Fix multi-message packets and multi-packet SysEx in the CoreMIDI adapter, with decoder tests for each. The same packet-splitting logic will be needed by the Windows adapter.
 3. ~~Windows `IMidiService` adapter.~~ Written and confirmed on a Windows 11 PC, 2026-10-06.
 4. ~~Milestone 3 (labels and persistence).~~ Done 2026-10-06.
-5. ~~Milestone 4: guided input test, then output test.~~ Both done 2026-10-06. `IMidiService.SendAsync` is implemented for CoreMIDI and WinMM; both confirmed against the H12 on 2026-10-06 (the Bass Station sounded from the Windows output test once the legacy names were paired). Output CC tests and SysEx Device Inquiry remain optional extras.
+5. ~~Milestone 4: guided input test, then output test.~~ Both done 2026-10-06. ~~Milestone 5: DAW settings.~~ Done 2026-10-06. `IMidiService.SendAsync` is implemented for CoreMIDI and WinMM; both confirmed against the H12 on 2026-10-06 (the Bass Station sounded from the Windows output test once the legacy names were paired). Output CC tests and SysEx Device Inquiry remain optional extras.
 6. Mac-only items (Intel packet alignment, `.app` bundle and Dock icon) last.
 
 ## Feature roadmap
@@ -329,13 +330,15 @@ Labels are keyed by port name and stored in `device-labels.json` under the appli
 
 The input test distinguishes instrument silent, instrument on a different port, connected but not sending notes, and working. The output test sends one short note on the port's output (on the channel the instrument sends on, else 1), guarantees the Note Off, and asks the user whether the instrument sounded, since the computer can only confirm the operating system accepted the data. A silent result is explained as a break beyond the computer: receive channel, instrument settings, cable, or H12 routing sending the output to a different socket. The DAW-configuration layer (Milestone 5) is next.
 
-### Milestone 5: DAW recommendations — planned
+### Milestone 5: DAW recommendations — done 2026-10-06
 
 - Generate Ableton Live settings.
 - Generate Cubase settings.
 - Add copy-friendly summaries and warnings for common misconfiguration.
 
 **Success:** recommendations are derived from observed port/channel data rather than guesses.
+
+Done. Channel comes from what the port has actually received, with explicit notes when nothing has been seen yet or several channels were heard. Sync is left off unless the instrument sends clock, in which case the note explains the tempo-master choice. Remote is left off when the instrument sends CC so that automation records. The output side is only presented as reliable once the output test has been heard.
 
 ### Milestone 6: CME routing awareness — future investigation
 

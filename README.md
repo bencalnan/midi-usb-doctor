@@ -15,7 +15,8 @@ Early working foundation, reviewed 2026-10-06:
 - Select a port and press "Test input". The app listens for ten seconds while you play, then reports in plain language: port, channel, whether notes, controls and clock arrived, and what to try if not. If the instrument showed up on a different port during the test, it says which.
 - Press "Test output" to send one short note to the port's output, on the channel the instrument sends on. The matching Note Off is always sent, including if the app closes mid-note. The app then asks whether the instrument sounded, because the computer can only confirm the operating system accepted the data, and the answer becomes the row's output status with advice for a silent result.
 - "Pause listening" in the header releases every port so a DAW or CME's UxMIDI Tools can use them, then "Resume listening" takes them back. Needed on Windows versions before Windows MIDI Services, where only one application can hold a port.
-- Not yet implemented: DAW recommendations, hot-plug handling, output Control Change tests.
+- Press "DAW settings" for copy-ready Ableton Live and Cubase settings for the selected port: MIDI ports preferences, track MIDI From / MIDI To or Input / Output Routing, and channel, worked out from what was observed. Notes explain when Sync or Remote should differ from the defaults, for instance when the instrument sends clock or control changes, and whether the output has been confirmed.
+- Not yet implemented: hot-plug handling, output Control Change tests, reading the H12 routing.
 
 The shipping targets are current Windows 11 and current macOS. macOS is the development platform. The MIDI layer sits behind a platform-neutral interface with a CoreMIDI adapter for macOS and a WinMM adapter for Windows; both have been run against the H12.
 
