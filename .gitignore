@@ -1,0 +1,15 @@
+# Repository-local .NET SDK
+.dotnet/
+
+# .NET build output
+bin/
+obj/
+
+# IDE and user-specific files
+.idea/
+.vscode/
+*.suo
+*.user
+
+# macOS
+.DS_Store

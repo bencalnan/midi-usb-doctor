@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+dotnet_bin="$repo_root/.dotnet/dotnet"
+
+if [[ ! -x "$dotnet_bin" ]]; then
+  echo "The repository-local .NET SDK is not installed." >&2
+  echo "Run ./scripts/setup-dotnet.sh first." >&2
+  exit 1
+fi
+
+export DOTNET_ROOT="$repo_root/.dotnet"
+export PATH="$DOTNET_ROOT:$PATH"
+
+exec "$dotnet_bin" "$@"
