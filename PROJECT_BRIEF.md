@@ -192,7 +192,8 @@ Reviewed 2026-10-06 against the code on `main`; updated the same day after the a
 - Device labels: selecting a port shows an inline editor for the instrument name and the H12 socket it is plugged into ("USB host 3", "DIN 1"). Both are keyed by port name, stored as JSON under the user's application-data folder (`DeviceLabelStore` in Core, unit-tested), restored at startup, and kept for ports that are not currently connected.
 - A Windows adapter (`WinMmMidiService`) and a platform factory. Confirmed working on a Windows 11 PC with the H12 on 2026-10-06.
 - Pause/Resume listening releases and reopens every port, for Windows versions where only one application can hold a port. Rows held by another application read "Input in use elsewhere" with advice.
-- Guided input test: "Test this device" listens to the selected port for ten seconds, then shows a result card with status (Working, Connected but no notes or controls, Nothing received), connection, channel, notes, controls, clock, and advice. If nothing arrived but another port received notes or controls during the test, the advice names that port, which covers the "arriving on a different port than expected" diagnosis. Logic is `DeviceTestEvaluator` in Core, unit-tested.
+- Output test: "Test output" sends a short test note with a guaranteed Note Off and records the user's heard / not heard answer as the row's output status (`MidiTestNote`, `OutputTestEvaluator` in Core, unit-tested). The Windows adapter opens, sends and closes the output per message so it never holds an output a DAW might need.
+- Guided input test: "Test input" listens to the selected port for ten seconds, then shows a result card with status (Working, Connected but no notes or controls, Nothing received), connection, channel, notes, controls, clock, and advice. If nothing arrived but another port received notes or controls during the test, the advice names that port, which covers the "arriving on a different port than expected" diagnosis. Logic is `DeviceTestEvaluator` in Core, unit-tested.
 - The app icon asset is embedded and loads at startup (see item 9 below for what it does and does not affect).
 
 ### Gaps against the MVP scope
@@ -202,7 +203,7 @@ Reviewed 2026-10-06 against the code on `main`; updated the same day after the a
 3. **One message per CoreMIDI packet.** The adapter emits a single `MidiMessage` per packet and the decoder reads only the first status byte. A packet carrying several messages loses all but the first, and SysEx that spans packets shows as "Data" rows rather than one SysEx summary.
 4. **Packet stride assumes Apple Silicon.** The 4-byte alignment applied between packets matches the ARM definition of `MIDIPacketNext`. On Intel Macs CoreMIDI does not pad between packets, so multi-packet lists would be misread. Not a problem on the development machine, but it needs a runtime check or a note before Intel is claimed as supported.
 5. **No hot-plug.** The CoreMIDI client is created with no notification callback and `IMidiService` has no device-changed event, so connecting or disconnecting hardware requires a manual refresh.
-6. **No output path.** `IMidiService` has no send method. Milestone 4's outbound Note/CC tests will need one, plus the matching Note Off cleanup.
+6. ~~No output path.~~ Resolved 2026-10-06: `SendAsync` on both adapters, used by the output test with Note Off cleanup.
 10. ~~Windows adapter is unverified.~~ Resolved 2026-10-06: first run on a Windows 11 PC with the H12 worked (discovery, pairing, live monitoring). WinMM device IDs are indexes that can change between sessions, which is why labels are keyed by port name. SysEx receive on Windows has not been specifically exercised yet.
 7. ~~Selecting a port with no input leaves the previous monitor running.~~ Resolved 2026-10-06: selection only filters the log and no longer starts or stops monitoring.
 8. **Test coverage is thin** relative to the verification strategy below. Pairing and per-port activity tracking are now covered, but the decoder has three cases and no system messages, there is no fake `IMidiService` for discovery or high-volume tests, and the CoreMIDI test returns silently off macOS instead of being skipped.
@@ -216,7 +217,7 @@ The shipping targets are current Windows 11 and current macOS; the Mac is the de
 2. Fix multi-message packets and multi-packet SysEx in the CoreMIDI adapter, with decoder tests for each. The same packet-splitting logic will be needed by the Windows adapter.
 3. ~~Windows `IMidiService` adapter.~~ Written and confirmed on a Windows 11 PC, 2026-10-06.
 4. ~~Milestone 3 (labels and persistence).~~ Done 2026-10-06.
-5. ~~Milestone 4 input half: guided input test and plain-language result.~~ Done 2026-10-06. Outbound tests remain (need a send method on `IMidiService` for both adapters) and should follow the first Windows run.
+5. ~~Milestone 4: guided input test, then output test.~~ Both done 2026-10-06. `IMidiService.SendAsync` is implemented for CoreMIDI and WinMM; the Windows send path still needs a one-off confirmation on the PC. Output CC tests and SysEx Device Inquiry remain optional extras.
 6. Mac-only items (Intel packet alignment, `.app` bundle and Dock icon) last.
 
 ## Feature roadmap
@@ -317,7 +318,7 @@ The current version monitors every input at once, shows per-port activity and ch
 
 Labels are keyed by port name and stored in `device-labels.json` under the application-data folder. Ports that are absent keep their labels. Profiles (named sets of labels) were not needed yet and remain open.
 
-### Milestone 4: guided tests and diagnostics — input half done 2026-10-06
+### Milestone 4: guided tests and diagnostics — done 2026-10-06
 
 - Add a step-by-step input test.
 - Add safe outbound Note/CC tests with explicit port selection.
@@ -326,7 +327,7 @@ Labels are keyed by port name and stored in `device-labels.json` under the appli
 
 **Success:** a user can determine whether a failure is at the instrument, CME/system routing, channel selection, or DAW configuration layer.
 
-The input test is in place and distinguishes instrument silent, instrument on a different port, connected but not sending notes, and working. Outbound tests, output-side results and the DAW-configuration layer are still to do.
+The input test distinguishes instrument silent, instrument on a different port, connected but not sending notes, and working. The output test sends one short note on the port's output (on the channel the instrument sends on, else 1), guarantees the Note Off, and asks the user whether the instrument sounded, since the computer can only confirm the operating system accepted the data. A silent result is explained as a break beyond the computer: receive channel, instrument settings, cable, or H12 routing sending the output to a different socket. The DAW-configuration layer (Milestone 5) is next.
 
 ### Milestone 5: DAW recommendations — planned
 

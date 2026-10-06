@@ -50,6 +50,11 @@ public partial class MainWindow : Window
     private DateTimeOffset _testStartedAt;
     private int _testSecondsShown = -1;
 
+    // Output test state. The Note Off is tracked so it is always sent, even if the app closes mid-note.
+    private MidiPortPairViewModel? _outputTestRow;
+    private int _outputTestChannel = 1;
+    private (string EndpointId, byte[] NoteOff)? _pendingNoteOff;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -78,6 +83,7 @@ public partial class MainWindow : Window
         Closed += async (_, _) =>
         {
             _activityTimer.Stop();
+            await SendPendingNoteOffAsync();
             if (_midiService is not null)
             {
                 _midiService.MessageReceived -= MidiService_OnMessageReceived;
@@ -166,7 +172,7 @@ public partial class MainWindow : Window
         RebuildVisibleTraffic();
         UpdateTrafficHelpText();
         ShowAllButton.IsEnabled = _filter is not null;
-        ShowAllButton.Content = _filter is null ? "Showing all ports" : "Show all ports";
+        ShowAllButton.Content = _filter is null ? "Showing all" : "Show all";
         UpdateLabelEditor();
         UpdateTestButton();
     }
@@ -190,7 +196,116 @@ public partial class MainWindow : Window
             CancelTest();
         }
 
+        OutputQuestionPanel.IsVisible = false;
         TestCard.IsVisible = false;
+    }
+
+    private async void OutputTestButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (_filter is not null)
+        {
+            await RunOutputTestAsync(_filter);
+        }
+    }
+
+    private void OutputHeard_OnClick(object? sender, RoutedEventArgs e) =>
+        AnswerOutputTest(OutputTestOutcome.Heard);
+
+    private void OutputNotHeard_OnClick(object? sender, RoutedEventArgs e) =>
+        AnswerOutputTest(OutputTestOutcome.NotHeard);
+
+    private async Task RunOutputTestAsync(MidiPortPairViewModel row)
+    {
+        if (_midiService is null || row.Output is null)
+        {
+            return;
+        }
+
+        CancelTest();
+        _outputTestRow = row;
+        _outputTestChannel = MidiTestNote.ChooseChannel(row.Activity);
+        OutputTestButton.IsEnabled = false;
+
+        _testSummary.Clear();
+        TestHeadline.Foreground = TextBrush;
+        TestHeadline.Text = $"Sending a test note to {row.Title}…";
+        TestAdviceText.Text = string.Empty;
+        OutputQuestionPanel.IsVisible = false;
+        TestCard.IsVisible = true;
+
+        string? error = null;
+        try
+        {
+            _pendingNoteOff = (row.Output.Id, MidiTestNote.NoteOff(_outputTestChannel));
+            await _midiService.SendAsync(row.Output.Id, MidiTestNote.NoteOn(_outputTestChannel));
+            await Task.Delay(MidiTestNote.DefaultDuration);
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+        finally
+        {
+            await SendPendingNoteOffAsync();
+        }
+
+        var outcome = error is null ? OutputTestOutcome.Sent : OutputTestOutcome.Failed;
+        row.SetOutputOutcome(outcome);
+        ShowOutputResult(OutputTestEvaluator.Describe(
+            outcome, row.Pair.Name, row.Label, row.Connection, _outputTestChannel, error: error));
+        UpdateTestButton();
+    }
+
+    private void AnswerOutputTest(OutputTestOutcome outcome)
+    {
+        if (_outputTestRow is null)
+        {
+            return;
+        }
+
+        var row = _outputTestRow;
+        row.SetOutputOutcome(outcome);
+        ShowOutputResult(OutputTestEvaluator.Describe(
+            outcome, row.Pair.Name, row.Label, row.Connection, _outputTestChannel));
+    }
+
+    private void ShowOutputResult(OutputTestResult result)
+    {
+        TestHeadline.Text = result.Headline;
+        TestHeadline.Foreground = result.Outcome switch
+        {
+            OutputTestOutcome.Heard => ReceivingBrush,
+            OutputTestOutcome.Sent => TextBrush,
+            _ => ErrorBrush,
+        };
+
+        _testSummary.Clear();
+        foreach (var line in result.Summary)
+        {
+            _testSummary.Add(line);
+        }
+
+        TestAdviceText.Text = result.Advice;
+        OutputQuestionPanel.IsVisible = result.Outcome == OutputTestOutcome.Sent;
+        TestCard.IsVisible = true;
+    }
+
+    private async Task SendPendingNoteOffAsync()
+    {
+        if (_pendingNoteOff is not { } pending || _midiService is null)
+        {
+            return;
+        }
+
+        _pendingNoteOff = null;
+        try
+        {
+            await _midiService.SendAsync(pending.EndpointId, pending.NoteOff);
+        }
+        catch
+        {
+            // The port is gone or held elsewhere; nothing further we can do for the note.
+        }
     }
 
     private void StartTest(MidiPortPairViewModel row)
@@ -203,8 +318,9 @@ public partial class MainWindow : Window
 
         _testSummary.Clear();
         TestHeadline.Foreground = TextBrush;
-        TestHeadline.Text = $"Testing {row.Title}…";
+        TestHeadline.Text = $"Testing input from {row.Title}…";
         TestAdviceText.Text = string.Empty;
+        OutputQuestionPanel.IsVisible = false;
         TestCard.IsVisible = true;
         UpdateTestCountdown(DateTimeOffset.UtcNow);
         UpdateTestButton();
@@ -280,14 +396,16 @@ public partial class MainWindow : Window
 
     private void UpdateTestButton()
     {
+        OutputTestButton.IsEnabled = _filter?.Output is not null && _midiService is not null && _testRow is null;
+
         if (_testRow is not null)
         {
-            TestButton.Content = "Finish test now";
+            TestButton.Content = "Finish now";
             TestButton.IsEnabled = true;
             return;
         }
 
-        TestButton.Content = "Test this device";
+        TestButton.Content = "Test input";
         TestButton.IsEnabled = _filter?.Input is not null && _monitoredInputIds.Count > 0;
     }
 
