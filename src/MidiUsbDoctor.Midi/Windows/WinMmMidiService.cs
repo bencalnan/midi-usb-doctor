@@ -10,7 +10,7 @@ namespace MidiUsbDoctor.Midi.Windows;
 ///
 /// WinMM was chosen for the first Windows release because it is available on every
 /// supported Windows version, needs no SDK packages beyond P/Invoke, and because
-/// Windows MIDI Services (Windows 11 24H2 and later) transparently serves WinMM clients,
+/// Windows MIDI Services (in-box from Windows 11 25H2) transparently serves WinMM clients,
 /// including multi-client access. A native Windows MIDI Services adapter can be added
 /// behind <see cref="IMidiService"/> later without touching the UI or core.
 ///

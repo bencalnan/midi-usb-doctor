@@ -26,9 +26,7 @@ public sealed class MidiPortPairViewModel : INotifyPropertyChanged
     public MidiPortPairViewModel(MidiPortPair pair)
     {
         Pair = pair;
-        DisplayName = pair.IsH12 && pair.PortNumber is { } number
-            ? $"Port {number} — {pair.Name}"
-            : pair.Name;
+        DisplayName = pair.Name;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -73,7 +71,7 @@ public sealed class MidiPortPairViewModel : INotifyPropertyChanged
         : _activity.MessageCount > 0 ? "Input receiving"
         : "Input ready";
 
-    public string OutputStatus => Output is null ? "Output missing" : "Output ready";
+    public string OutputStatus => Output is null ? "Output missing" : "Output not tested";
 
     public string ChannelText =>
         _activity.Channels.Count == 0
