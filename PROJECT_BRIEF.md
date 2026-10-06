@@ -1,0 +1,276 @@
+# MIDI USB Doctor
+
+## Project summary
+
+MIDI USB Doctor is a Windows desktop diagnostic tool for musicians using a CME H12MIDI Pro (and potentially other CME MIDI interfaces). It should make MIDI routing problems visible without requiring the user to understand raw MIDI or repeatedly inspect DAW settings.
+
+The intended experience is:
+
+> Plug everything in, press **Test**, play or adjust each instrument, and receive a clear green/red diagnosis plus the exact Ableton Live or Cubase settings to use.
+
+The first release should answer three practical questions:
+
+1. Which Windows/CME virtual port is an instrument arriving on?
+2. Which MIDI channel is it using?
+3. Is valid MIDI data reaching the computer?
+
+## Product principles
+
+- Prefer plain-language diagnoses over MIDI jargon.
+- Show live evidence rather than asking users to infer routing from configuration screens.
+- Keep generic MIDI monitoring separate from CME-specific behaviour.
+- Let users label physical or virtual ports once, because standard MIDI traffic usually does not identify the connected instrument.
+- Do not make proprietary CME routing access a dependency of the first release.
+
+## Proposed technology
+
+- .NET 10
+- WPF desktop UI
+- Windows MIDI APIs / Windows MIDI Services
+- C# solution split into reusable core logic and the Windows UI
+
+Suggested solution structure:
+
+```text
+MidiUsbDoctor
+├── MidiUsbDoctor.Core
+│   ├── DeviceDiscovery
+│   ├── MidiMonitoring
+│   ├── MidiAnalysis
+│   ├── Diagnostics
+│   └── DawConfiguration
+├── MidiUsbDoctor.Cme
+│   ├── PortIdentification
+│   └── Routing
+├── MidiUsbDoctor.Wpf
+│   ├── Dashboard
+│   ├── DeviceTest
+│   ├── Results
+│   └── Settings
+└── MidiUsbDoctor.Tests
+```
+
+## MVP scope
+
+### Device discovery
+
+- Enumerate all MIDI input and output endpoints visible to Windows.
+- Identify the H12MIDI Pro virtual input/output ports by their reported names.
+- Display endpoint availability and connection state.
+- Refresh safely when hardware is connected, disconnected, or restarted.
+
+### Live monitoring
+
+- Listen to all relevant input endpoints simultaneously.
+- Show timestamp, source port, MIDI channel, message type, and useful decoded values.
+- Decode at least:
+  - Note On and Note Off
+  - Control Change
+  - Program Change
+  - Pitch Bend
+  - MIDI Clock and transport messages
+  - SysEx as raw/summary data
+- Provide obvious flashing input/output activity indicators.
+
+Example event:
+
+```text
+10:46:23.112
+H12 Port 1
+NOTE ON
+Channel: 1
+Note: C3
+Velocity: 91
+```
+
+### Port labelling
+
+Allow the user to create and persist mappings such as:
+
+```text
+H12 Port 1 = Bass Station II
+H12 Port 2 = Roland S-1
+H12 Port 3 = Roland T-8
+```
+
+The app may attempt MIDI Device Inquiry via SysEx later, but manual labels must remain the dependable approach because device-query support varies.
+
+### Diagnostics
+
+For each labelled instrument, report:
+
+- Configured Windows input and output ports
+- Detected MIDI channel or channels
+- Whether notes, CC, clock, and SysEx have been observed
+- Time of the most recent message
+- Input test status
+- Output test status, when an active test has been run
+- Clear explanation of failures and likely fixes
+
+Example result:
+
+```text
+BASS STATION II
+
+Connected via: H12 Port 1
+Input test:      Pass
+Output test:     Pass
+MIDI channel:    1
+Notes:           Detected
+CC data:         Detected
+Clock:           Not detected
+```
+
+The diagnostic engine should distinguish between conditions such as:
+
+- The instrument is not transmitting.
+- MIDI reaches the CME hardware but not the expected Windows virtual port.
+- MIDI is arriving on a different port or channel than expected.
+- Routing appears correct, but the DAW is probably listening to the wrong endpoint.
+- The port is unavailable or held exclusively by another application.
+
+### DAW configuration guidance
+
+Generate settings the user can copy into Ableton Live or Cubase based on observed traffic and saved device labels.
+
+Example:
+
+```text
+ABLETON LIVE
+MIDI From: H12 Port 1
+Channel: 1
+Track: On
+Sync: Off
+Remote: Off
+
+CUBASE
+Input Routing: H12 Port 1
+Output Routing: H12 Port 1
+Channel: 1
+```
+
+The generated recommendation should explain when Track, Sync, or Remote should differ from the defaults rather than enabling every option.
+
+## Initial UI concept
+
+Use a single dashboard for the first release:
+
+| CME/Windows port | Device label | Detected channel | Latest traffic | Status |
+|---|---|---:|---|---|
+| H12 Port 1 | Bass Station II | 1 | Note 54 | Receiving |
+| H12 Port 2 | Roland S-1 | 2 | CC 74 | Receiving |
+| H12 Port 3 | Roland T-8 | 10 | Clock | Receiving |
+
+Selecting a row should reveal:
+
+- Live message stream
+- Input/output path
+- Test controls
+- Diagnostic findings
+- Recommended DAW configuration
+
+## Delivery milestones
+
+### Milestone 1: endpoint discovery
+
+- Create the .NET 10 solution and WPF shell.
+- Enumerate MIDI endpoints.
+- Identify and group H12 input/output port pairs.
+- Handle connection and disconnection events.
+
+**Success:** the app accurately lists the same endpoints Windows exposes for the H12.
+
+### Milestone 2: live MIDI monitor
+
+- Open multiple input endpoints.
+- Capture, timestamp, and decode messages.
+- Display live activity by port and channel.
+- Add bounded buffering so sustained MIDI clock or dense traffic cannot freeze the UI.
+
+**Success:** playing each connected synth immediately identifies its Windows port, MIDI channel, and message type.
+
+### Milestone 3: labels and profiles
+
+- Let users name instruments and associate them with port pairs.
+- Persist the setup locally.
+- Restore it while tolerating missing or renamed endpoints.
+
+**Success:** device labels survive an app restart and remain useful after reconnecting the hardware.
+
+### Milestone 4: guided tests and diagnostics
+
+- Add a step-by-step input test.
+- Add safe outbound Note/CC tests with explicit port selection.
+- Track expected versus observed results.
+- Present actionable diagnoses.
+
+**Success:** a user can determine whether a failure is at the instrument, CME/Windows routing, channel selection, or DAW configuration layer.
+
+### Milestone 5: DAW recommendations
+
+- Generate Ableton Live settings.
+- Generate Cubase settings.
+- Add copy-friendly summaries and warnings for common misconfiguration.
+
+**Success:** recommendations are derived from observed port/channel data rather than guesses.
+
+### Milestone 6: CME routing awareness (investigation)
+
+- Research how CME's UxMIDI Tools reads the device routing matrix, mappings, and filters.
+- Look for a supported API or documented SysEx/USB protocol first.
+- Only consider protocol observation or reverse engineering if legally and technically appropriate.
+- Keep this work behind a CME-specific abstraction.
+
+**Success:** if feasible, show paths such as `USB Host 1 -> Virtual Port 1` and `Virtual Port 1 -> MIDI Out 1` without requiring manual entry.
+
+This milestone is deliberately outside the MVP because no public CME programming API was identified in the source discussion.
+
+## Data model sketch
+
+```csharp
+public sealed class MidiDeviceTest
+{
+    public required string DeviceName { get; init; }
+    public required string InputPortId { get; init; }
+    public string? OutputPortId { get; init; }
+    public int? DetectedChannel { get; set; }
+    public bool ReceivingNotes { get; set; }
+    public bool ReceivingControlChanges { get; set; }
+    public bool ReceivingClock { get; set; }
+    public DateTimeOffset? LastMessageAt { get; set; }
+    public MidiTestStatus Status { get; set; }
+}
+```
+
+The production model should support multiple detected channels and distinguish “not tested” from a genuine failed test.
+
+## Verification strategy
+
+- Unit-test MIDI byte/packet decoding with captured and synthetic messages.
+- Unit-test diagnostic rules independently of physical hardware.
+- Use fake endpoint adapters for discovery, disconnect, and high-volume traffic tests.
+- Integration-test with the H12 and each connected instrument.
+- Compare enumerated endpoints with Windows and CME tooling.
+- Verify input detection for notes, CC, clock, transport, and SysEx.
+- Verify outbound tests use the explicitly selected destination and send Note Off cleanup.
+- Validate generated instructions in current Ableton Live and Cubase versions.
+- Test with a DAW open at the same time, especially when Windows MIDI Services multi-client support is available.
+
+## Risks and open questions
+
+- The exact Windows MIDI API/package choice for .NET 10 needs a small technical spike.
+- Endpoint names and identifiers may change across drivers, USB ports, or reconnects.
+- Older MIDI stacks or drivers may allow only one client to open an endpoint.
+- MIDI clock can generate enough traffic to overwhelm an unbounded UI log.
+- A successful outbound send confirms the Windows port accepted data, not necessarily that the physical instrument received or acted on it.
+- Device Inquiry SysEx is optional and cannot be the only identification mechanism.
+- CME routing/filter configuration may use an undocumented protocol.
+- The H12's USB-host topology and its Windows virtual ports should be verified on the actual target hardware before hard-coding assumptions.
+
+## Definition of a useful first release
+
+The first release is successful when a user can launch the app, play each synth, and see—in seconds—which H12 virtual port and MIDI channel carried the data, whether valid MIDI is arriving, and which Ableton Live or Cubase input settings to select.
+
+## Source
+
+This brief summarizes the planning discussion in the shared ChatGPT conversation [Build MIDI Dashboard](https://chatgpt.com/share/6ac4fa0f-d960-83ed-9257-43ebc2165ed0). It is a project brief, not a verbatim transcript.
