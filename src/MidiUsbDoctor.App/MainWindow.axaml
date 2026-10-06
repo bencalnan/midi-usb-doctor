@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:core="using:MidiUsbDoctor.Core"
         mc:Ignorable="d"
         d:DesignWidth="1100"
         d:DesignHeight="720"
@@ -20,8 +21,9 @@
                     <TextBlock Foreground="#8B949E"
                                Text="See where your MIDI is going — and where it stops." />
                 </StackPanel>
-                <Button Grid.Column="1" Padding="18,10" VerticalAlignment="Center"
-                        Content="Refresh devices" IsEnabled="False" />
+                <Button x:Name="RefreshButton" Grid.Column="1" Padding="18,10"
+                        VerticalAlignment="Center" Content="Refresh devices"
+                        Click="RefreshDevices_OnClick" />
             </Grid>
         </Border>
 
@@ -30,18 +32,39 @@
                 <Grid RowDefinitions="Auto,Auto,*">
                     <TextBlock FontSize="18" FontWeight="SemiBold" Foreground="#F0F6FC"
                                Text="MIDI endpoints" />
-                    <TextBlock Grid.Row="1" Margin="0,6,0,20" Foreground="#8B949E"
-                               Text="Connect the H12 to discover its ports." />
+                    <TextBlock x:Name="EndpointStatusText" Grid.Row="1" Margin="0,6,0,20"
+                               Foreground="#8B949E" Text="Checking CoreMIDI…" />
 
                     <Border Grid.Row="2" Padding="20" BorderBrush="#30363D" BorderThickness="1"
                             CornerRadius="8">
-                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
-                            <Border Width="12" Height="12" Background="#484F58" CornerRadius="6" />
-                            <TextBlock Foreground="#C9D1D9" Text="No endpoints loaded" />
-                            <TextBlock MaxWidth="260" TextAlignment="Center" TextWrapping="Wrap"
-                                       Foreground="#8B949E"
-                                       Text="CoreMIDI discovery will be connected in the next milestone." />
-                        </StackPanel>
+                        <Grid>
+                            <StackPanel x:Name="EmptyEndpointsPanel" HorizontalAlignment="Center"
+                                        VerticalAlignment="Center" Spacing="12">
+                                <Border Width="12" Height="12" Background="#484F58" CornerRadius="6" />
+                                <TextBlock HorizontalAlignment="Center" Foreground="#C9D1D9"
+                                           Text="No MIDI endpoints found" />
+                                <TextBlock MaxWidth="260" TextAlignment="Center" TextWrapping="Wrap"
+                                           Foreground="#8B949E"
+                                           Text="Connect the H12, then refresh devices." />
+                            </StackPanel>
+
+                            <ListBox x:Name="EndpointsList" IsVisible="False"
+                                     Background="Transparent" BorderThickness="0">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="core:MidiEndpoint">
+                                        <Grid Margin="0,5" ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                            <Border Width="10" Height="10" VerticalAlignment="Center"
+                                                    Background="#3FB950" CornerRadius="5" />
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Foreground="#F0F6FC" Text="{Binding Name}" />
+                                                <TextBlock FontSize="12" Foreground="#8B949E"
+                                                           Text="{Binding Direction}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
                     </Border>
                 </Grid>
             </Border>
