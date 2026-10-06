@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace MidiUsbDoctor.Core;
 
@@ -151,13 +152,20 @@ public sealed class DeviceLabelStore
     private sealed class LabelFile
     {
         public int Version { get; set; } = 2;
+
+        /// <summary>Version 1 format only; never written any more.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public Dictionary<string, string>? Labels { get; set; }
+
         public Dictionary<string, PortEntry>? Ports { get; set; }
     }
 
     private sealed class PortEntry
     {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Label { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Connection { get; set; }
     }
 }

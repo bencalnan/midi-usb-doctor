@@ -191,6 +191,7 @@ Reviewed 2026-10-06 against the code on `main`; updated the same day after the a
 - A "Hide clock" toggle (on by default) keeps MIDI Clock out of the log; port rows still report clock.
 - Device labels: selecting a port shows an inline editor for the instrument name and the H12 socket it is plugged into ("USB host 3", "DIN 1"). Both are keyed by port name, stored as JSON under the user's application-data folder (`DeviceLabelStore` in Core, unit-tested), restored at startup, and kept for ports that are not currently connected.
 - A Windows adapter (`WinMmMidiService`) and a platform factory exist and compile. They are untested on Windows; see item 10.
+- Guided input test: "Test this device" listens to the selected port for ten seconds, then shows a result card with status (Working, Connected but no notes or controls, Nothing received), connection, channel, notes, controls, clock, and advice. If nothing arrived but another port received notes or controls during the test, the advice names that port, which covers the "arriving on a different port than expected" diagnosis. Logic is `DeviceTestEvaluator` in Core, unit-tested.
 - The app icon asset is embedded and loads at startup (see item 9 below for what it does and does not affect).
 
 ### Gaps against the MVP scope
@@ -214,7 +215,7 @@ The shipping targets are current Windows 11 (25H2 or later, which includes Windo
 2. Fix multi-message packets and multi-packet SysEx in the CoreMIDI adapter, with decoder tests for each. The same packet-splitting logic will be needed by the Windows adapter.
 3. ~~Windows `IMidiService` adapter.~~ Written 2026-10-06 on WinMM; needs its first run on a PC (item 10).
 4. ~~Milestone 3 (labels and persistence).~~ Done 2026-10-06.
-5. Milestone 4: guided input test and plain-language result per labelled device, then outbound tests (needs a send method on `IMidiService` for both adapters).
+5. ~~Milestone 4 input half: guided input test and plain-language result.~~ Done 2026-10-06. Outbound tests remain (need a send method on `IMidiService` for both adapters) and should follow the first Windows run.
 6. Mac-only items (Intel packet alignment, `.app` bundle and Dock icon) last.
 
 ## Feature roadmap
@@ -315,7 +316,7 @@ The current version monitors every input at once, shows per-port activity and ch
 
 Labels are keyed by port name and stored in `device-labels.json` under the application-data folder. Ports that are absent keep their labels. Profiles (named sets of labels) were not needed yet and remain open.
 
-### Milestone 4: guided tests and diagnostics — next
+### Milestone 4: guided tests and diagnostics — input half done 2026-10-06
 
 - Add a step-by-step input test.
 - Add safe outbound Note/CC tests with explicit port selection.
@@ -323,6 +324,8 @@ Labels are keyed by port name and stored in `device-labels.json` under the appli
 - Present actionable diagnoses.
 
 **Success:** a user can determine whether a failure is at the instrument, CME/system routing, channel selection, or DAW configuration layer.
+
+The input test is in place and distinguishes instrument silent, instrument on a different port, connected but not sending notes, and working. Outbound tests, output-side results and the DAW-configuration layer are still to do.
 
 ### Milestone 5: DAW recommendations — planned
 
