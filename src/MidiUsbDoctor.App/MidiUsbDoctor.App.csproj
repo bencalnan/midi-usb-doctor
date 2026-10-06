@@ -22,4 +22,9 @@
     <ProjectReference Include="..\MidiUsbDoctor.Midi\MidiUsbDoctor.Midi.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <AvaloniaResource Include="..\..\assets\midi-usb-doctor-icon-flat.png"
+                      Link="Assets\AppIcon.png" />
+  </ItemGroup>
+
 </Project>

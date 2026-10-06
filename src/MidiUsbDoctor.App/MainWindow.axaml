@@ -12,6 +12,7 @@
         Height="720"
         MinWidth="820"
         MinHeight="560"
+        Icon="/Assets/AppIcon.png"
         Title="MIDI USB Doctor">
     <Window.Styles>
         <Style Selector="Button#RefreshButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
@@ -34,14 +35,20 @@
 
     <Grid RowDefinitions="Auto,*" Background="#0D1117">
         <Border Grid.Row="0" Padding="28,22" Background="#161B22">
-            <Grid ColumnDefinitions="*,Auto">
-                <StackPanel Spacing="4">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+                <Image Source="/Assets/AppIcon.png"
+                       Width="{Binding #TitleBlock.Bounds.Height}"
+                       Height="{Binding #TitleBlock.Bounds.Height}"
+                       Stretch="Uniform" VerticalAlignment="Center"
+                       RenderOptions.BitmapInterpolationMode="HighQuality" />
+                <StackPanel x:Name="TitleBlock" Grid.Column="1" Spacing="4"
+                            VerticalAlignment="Center">
                     <TextBlock FontSize="28" FontWeight="SemiBold" Foreground="#F0F6FC"
                                Text="MIDI USB Doctor" />
                     <TextBlock Foreground="#8B949E"
                                Text="See where your MIDI is going — and where it stops." />
                 </StackPanel>
-                <Button x:Name="RefreshButton" Grid.Column="1" Padding="18,10"
+                <Button x:Name="RefreshButton" Grid.Column="2" Padding="18,10"
                         VerticalAlignment="Center" Content="Refresh devices"
                         Background="#238636" Foreground="#FFFFFF" BorderBrush="#2EA043"
                         FontWeight="SemiBold"
