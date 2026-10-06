@@ -217,7 +217,7 @@ The shipping targets are current Windows 11 and current macOS; the Mac is the de
 2. Fix multi-message packets and multi-packet SysEx in the CoreMIDI adapter, with decoder tests for each. The same packet-splitting logic will be needed by the Windows adapter.
 3. ~~Windows `IMidiService` adapter.~~ Written and confirmed on a Windows 11 PC, 2026-10-06.
 4. ~~Milestone 3 (labels and persistence).~~ Done 2026-10-06.
-5. ~~Milestone 4: guided input test, then output test.~~ Both done 2026-10-06. `IMidiService.SendAsync` is implemented for CoreMIDI and WinMM; the Windows send path still needs a one-off confirmation on the PC. Output CC tests and SysEx Device Inquiry remain optional extras.
+5. ~~Milestone 4: guided input test, then output test.~~ Both done 2026-10-06. `IMidiService.SendAsync` is implemented for CoreMIDI and WinMM; both confirmed against the H12 on 2026-10-06 (the Bass Station sounded from the Windows output test once the legacy names were paired). Output CC tests and SysEx Device Inquiry remain optional extras.
 6. Mac-only items (Intel packet alignment, `.app` bundle and Dock icon) last.
 
 ## Feature roadmap
