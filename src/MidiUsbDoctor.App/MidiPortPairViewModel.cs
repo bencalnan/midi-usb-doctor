@@ -25,6 +25,7 @@ public sealed class MidiPortPairViewModel : INotifyPropertyChanged
     private bool _isActive;
     private string? _label;
     private string? _connection;
+    private OutputTestOutcome? _outputOutcome;
 
     public MidiPortPairViewModel(MidiPortPair pair)
     {
@@ -118,7 +119,22 @@ public sealed class MidiPortPairViewModel : INotifyPropertyChanged
         : _activity.MessageCount > 0 ? "Input receiving"
         : "Input ready";
 
-    public string OutputStatus => Output is null ? "Output missing" : "Output not tested";
+    public string OutputStatus =>
+        Output is null ? "Output missing"
+        : _outputOutcome switch
+        {
+            OutputTestOutcome.Sent => "Output: note sent",
+            OutputTestOutcome.Heard => "Output working",
+            OutputTestOutcome.NotHeard => "Output not heard",
+            OutputTestOutcome.Failed => "Output failed",
+            _ => "Output not tested",
+        };
+
+    public void SetOutputOutcome(OutputTestOutcome? outcome)
+    {
+        _outputOutcome = outcome;
+        Raise(nameof(OutputStatus));
+    }
 
     public string ChannelText =>
         _activity.Channels.Count == 0

@@ -24,6 +24,7 @@ public sealed class WinMmMidiService : IMidiService
 
     private readonly Lock _sync = new();
     private readonly Dictionary<string, uint> _inputDeviceIds = [];
+    private readonly Dictionary<string, uint> _outputDeviceIds = [];
     private readonly Dictionary<string, OpenInput> _openInputs = [];
     private readonly NativeMethods.MidiInProc _callback;
     private bool _disposed;
@@ -45,6 +46,7 @@ public sealed class WinMmMidiService : IMidiService
 
         var endpoints = new List<MidiEndpoint>();
         var inputIds = new Dictionary<string, uint>();
+        var outputIds = new Dictionary<string, uint>();
         var usedIds = new HashSet<string>(StringComparer.Ordinal);
 
         var inputCount = NativeMethods.midiInGetNumDevs();
@@ -74,6 +76,7 @@ public sealed class WinMmMidiService : IMidiService
             var name = string.IsNullOrWhiteSpace(caps.Name) ? $"MIDI Output {index + 1}" : caps.Name.Trim();
             var id = MakeUniqueId("winmm:out:" + name, usedIds);
             endpoints.Add(new MidiEndpoint(id, name, MidiEndpointDirection.Output));
+            outputIds[id] = index;
         }
 
         lock (_sync)
@@ -82,6 +85,12 @@ public sealed class WinMmMidiService : IMidiService
             foreach (var pair in inputIds)
             {
                 _inputDeviceIds[pair.Key] = pair.Value;
+            }
+
+            _outputDeviceIds.Clear();
+            foreach (var pair in outputIds)
+            {
+                _outputDeviceIds[pair.Key] = pair.Value;
             }
         }
 
@@ -176,6 +185,120 @@ public sealed class WinMmMidiService : IMidiService
         }
 
         return Task.CompletedTask;
+    }
+
+    public async Task SendAsync(
+        string endpointId,
+        ReadOnlyMemory<byte> data,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (data.IsEmpty)
+        {
+            return;
+        }
+
+        bool known;
+        lock (_sync)
+        {
+            known = _outputDeviceIds.ContainsKey(endpointId);
+        }
+
+        if (!known)
+        {
+            await GetEndpointsAsync(cancellationToken);
+        }
+
+        lock (_sync)
+        {
+            if (!_outputDeviceIds.TryGetValue(endpointId, out var deviceId))
+            {
+                throw new ArgumentException("The MIDI output endpoint is no longer available.", nameof(endpointId));
+            }
+
+            // Open, send, close. On the legacy Windows stack a held output would lock a DAW out
+            // of it, and a single short message does not justify keeping the handle.
+            var openStatus = NativeMethods.midiOutOpen(out var handle, deviceId, nint.Zero, nint.Zero, 0);
+            if (openStatus == NativeMethods.MmsyserrAllocated)
+            {
+                throw new MidiPortInUseException(endpointId);
+            }
+
+            ThrowForStatus(openStatus, "open the MIDI output");
+
+            try
+            {
+                var bytes = data.Span;
+                if (bytes[0] == 0xF0 || bytes.Length > 3)
+                {
+                    SendLongMessage(handle, bytes);
+                }
+                else
+                {
+                    uint packed = bytes[0];
+                    if (bytes.Length > 1)
+                    {
+                        packed |= (uint)bytes[1] << 8;
+                    }
+
+                    if (bytes.Length > 2)
+                    {
+                        packed |= (uint)bytes[2] << 16;
+                    }
+
+                    ThrowForStatus(NativeMethods.midiOutShortMsg(handle, packed), "send to the MIDI output");
+                }
+            }
+            finally
+            {
+                NativeMethods.midiOutClose(handle);
+            }
+        }
+    }
+
+    private static void SendLongMessage(nint handle, ReadOnlySpan<byte> bytes)
+    {
+        var headerSize = (uint)Marshal.SizeOf<NativeMethods.MidiHeader>();
+        var headerPointer = Marshal.AllocHGlobal((int)headerSize);
+        var dataPointer = Marshal.AllocHGlobal(bytes.Length);
+        try
+        {
+            Marshal.Copy(bytes.ToArray(), 0, dataPointer, bytes.Length);
+            var header = new NativeMethods.MidiHeader
+            {
+                Data = dataPointer,
+                BufferLength = (uint)bytes.Length,
+                BytesRecorded = (uint)bytes.Length,
+                ReservedArray = new nint[8],
+            };
+            Marshal.StructureToPtr(header, headerPointer, false);
+
+            ThrowForStatus(NativeMethods.midiOutPrepareHeader(handle, headerPointer, headerSize), "prepare the outgoing SysEx");
+            try
+            {
+                ThrowForStatus(NativeMethods.midiOutLongMsg(handle, headerPointer, headerSize), "send SysEx to the MIDI output");
+
+                // The driver sets MHDR_DONE when it has finished with the buffer. Short messages
+                // complete in well under a millisecond; give slow drivers up to a second.
+                var deadline = Environment.TickCount64 + 1000;
+                while ((Marshal.PtrToStructure<NativeMethods.MidiHeader>(headerPointer).Flags & NativeMethods.MhdrDone) == 0 &&
+                       Environment.TickCount64 < deadline)
+                {
+                    Thread.Sleep(1);
+                }
+            }
+            finally
+            {
+                NativeMethods.midiOutUnprepareHeader(handle, headerPointer, headerSize);
+            }
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(dataPointer);
+            Marshal.FreeHGlobal(headerPointer);
+        }
     }
 
     public ValueTask DisposeAsync()
@@ -370,6 +493,7 @@ public sealed class WinMmMidiService : IMidiService
 
         internal const uint CallbackFunction = 0x00030000;
         internal const uint MmsyserrAllocated = 4; // "The specified device is already in use."
+        internal const uint MhdrDone = 0x00000001;
         internal const uint MimData = 0x3C3;
         internal const uint MimLongData = 0x3C4;
 
@@ -455,5 +579,23 @@ public sealed class WinMmMidiService : IMidiService
 
         [DllImport(WinMm, CharSet = CharSet.Unicode)]
         internal static extern uint midiInGetErrorTextW(uint error, StringBuilder text, uint size);
+
+        [DllImport(WinMm)]
+        internal static extern uint midiOutOpen(out nint handle, uint deviceId, nint callback, nint instance, uint flags);
+
+        [DllImport(WinMm)]
+        internal static extern uint midiOutClose(nint handle);
+
+        [DllImport(WinMm)]
+        internal static extern uint midiOutShortMsg(nint handle, uint message);
+
+        [DllImport(WinMm)]
+        internal static extern uint midiOutLongMsg(nint handle, nint header, uint size);
+
+        [DllImport(WinMm)]
+        internal static extern uint midiOutPrepareHeader(nint handle, nint header, uint size);
+
+        [DllImport(WinMm)]
+        internal static extern uint midiOutUnprepareHeader(nint handle, nint header, uint size);
     }
 }

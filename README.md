@@ -12,9 +12,10 @@ Early working foundation, reviewed 2026-10-06:
 - Listens on every input at once. Each row shows an activity dot, the channels heard, and the last message, so playing an instrument identifies its port.
 - Decodes Note On/Off, Control Change, Program Change, Pitch Bend, pressure, Clock, transport and SysEx into a bounded live log. Selecting a row filters the log to that port, and a "Hide clock" toggle (on by default) keeps MIDI Clock out of the log while port rows still report that clock was seen.
 - Select a port to record which instrument is on it, such as "Bass Station II", and which H12 socket it is plugged into, such as "USB host 3". Both are saved to disk, restored on launch, and shown in the port list; the instrument name also replaces the port name in the log.
-- Select a port and press "Test this device". The app listens for ten seconds while you play, then reports in plain language: port, channel, whether notes, controls and clock arrived, and what to try if not. If the instrument showed up on a different port during the test, it says which.
+- Select a port and press "Test input". The app listens for ten seconds while you play, then reports in plain language: port, channel, whether notes, controls and clock arrived, and what to try if not. If the instrument showed up on a different port during the test, it says which.
+- Press "Test output" to send one short note to the port's output, on the channel the instrument sends on. The matching Note Off is always sent, including if the app closes mid-note. The app then asks whether the instrument sounded, because the computer can only confirm the operating system accepted the data, and the answer becomes the row's output status with advice for a silent result.
 - "Pause listening" in the header releases every port so a DAW or CME's UxMIDI Tools can use them, then "Resume listening" takes them back. Needed on Windows versions before Windows MIDI Services, where only one application can hold a port.
-- Not yet implemented: output (computer-to-instrument) tests, DAW recommendations, hot-plug handling.
+- Not yet implemented: DAW recommendations, hot-plug handling, output Control Change tests.
 
 The shipping targets are current Windows 11 and current macOS. macOS is the development platform. The MIDI layer sits behind a platform-neutral interface with a CoreMIDI adapter for macOS and a WinMM adapter for Windows; both have been run against the H12.
 
