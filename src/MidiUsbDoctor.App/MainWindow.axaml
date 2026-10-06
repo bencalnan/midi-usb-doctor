@@ -30,9 +30,19 @@
             <Setter Property="Foreground" Value="#FFFFFF" />
         </Style>
         <Style Selector="Button.subtle">
-            <Setter Property="Background" Value="#21262D" />
-            <Setter Property="Foreground" Value="#C9D1D9" />
+            <Setter Property="Background" Value="#30363D" />
+            <Setter Property="Foreground" Value="#E6EDF3" />
+            <Setter Property="BorderBrush" Value="#484F58" />
+        </Style>
+        <!-- Disabled buttons: keep them visibly buttons on every platform. The Fluent theme's
+             default disabled look is near-black on this dark palette, especially on Windows. -->
+        <Style Selector="Button:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#262C36" />
+            <Setter Property="Foreground" Value="#8B949E" />
             <Setter Property="BorderBrush" Value="#30363D" />
+        </Style>
+        <Style Selector="Button:disabled">
+            <Setter Property="Opacity" Value="1" />
         </Style>
         <Style Selector="Button.subtle:pointerover /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="#30363D" />
