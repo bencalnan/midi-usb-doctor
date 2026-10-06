@@ -201,7 +201,8 @@
                         </StackPanel>
                     </Border>
 
-                    <Grid Grid.Row="4" Margin="0,12,0,0" ColumnDefinitions="*,*,*" ColumnSpacing="10">
+                    <Grid Grid.Row="4" Margin="0,12,0,0" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto"
+                          ColumnSpacing="10" RowSpacing="10">
                         <Button x:Name="TestButton" HorizontalAlignment="Stretch" Padding="12,10"
                                 Content="Test input" IsEnabled="False"
                                 Classes="accent-green" Click="TestButton_OnClick" />
@@ -209,17 +210,20 @@
                                 Padding="12,10" Content="Test output" IsEnabled="False"
                                 Classes="accent-green" Click="OutputTestButton_OnClick"
                                 ToolTip.Tip="Sends one short note to this port's output, then asks whether the instrument sounded" />
-                        <Button x:Name="ShowAllButton" Grid.Column="2" HorizontalAlignment="Stretch"
-                                Padding="12,10" Content="Showing all" IsEnabled="False"
+                        <Button x:Name="DawSettingsButton" Grid.Row="1" HorizontalAlignment="Stretch"
+                                Padding="12,10" Content="DAW settings" IsEnabled="False"
                                 Background="#1F6FEB" Foreground="#FFFFFF" BorderBrush="#388BFD"
-                                FontWeight="SemiBold"
-                                Click="ShowAll_OnClick" />
+                                FontWeight="SemiBold" Click="DawSettingsButton_OnClick"
+                                ToolTip.Tip="Ableton Live and Cubase settings for this port, from what has been observed" />
+                        <Button x:Name="ShowAllButton" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch"
+                                Padding="12,10" Content="Showing all" IsEnabled="False"
+                                Classes="subtle" Click="ShowAll_OnClick" />
                     </Grid>
                 </Grid>
             </Border>
 
             <Border Grid.Column="1" Padding="22" Background="#161B22" CornerRadius="10">
-                <Grid RowDefinitions="Auto,Auto,Auto,*">
+                <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock FontSize="18" FontWeight="SemiBold" Foreground="#F0F6FC"
                                    Text="Live MIDI traffic" />
@@ -275,7 +279,41 @@
                         </Grid>
                     </Border>
 
-                    <Border Grid.Row="3" Padding="18" Background="#0D1117" CornerRadius="8">
+                    <Border x:Name="DawCard" Grid.Row="3" Margin="0,0,0,16" Padding="18"
+                            Background="#0D1117" BorderBrush="#30363D" BorderThickness="1"
+                            CornerRadius="8" IsVisible="False">
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
+                            <TextBlock x:Name="DawTitle" FontSize="16" FontWeight="SemiBold"
+                                       Foreground="#F0F6FC" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <Button Padding="12,5" FontSize="12" Content="Copy all" Classes="accent-green"
+                                        Click="CopyAll_OnClick" />
+                                <Button Padding="12,5" FontSize="12" Content="Dismiss" Classes="subtle"
+                                        Click="DawDismiss_OnClick" />
+                            </StackPanel>
+                            <Grid Grid.Row="1" Grid.ColumnSpan="2" Margin="0,12,0,0"
+                                  ColumnDefinitions="*,*" ColumnSpacing="16">
+                                <Grid RowDefinitions="*,Auto" RowSpacing="8">
+                                    <SelectableTextBlock x:Name="DawAbletonText" FontFamily="Menlo, Consolas, monospace"
+                                                         FontSize="12" Foreground="#C9D1D9" TextWrapping="Wrap" />
+                                    <Button Grid.Row="1" Padding="12,5" FontSize="12" HorizontalAlignment="Left"
+                                            Content="Copy Ableton" Classes="subtle" Click="CopyAbleton_OnClick" />
+                                </Grid>
+                                <Grid Grid.Column="1" RowDefinitions="*,Auto" RowSpacing="8">
+                                    <SelectableTextBlock x:Name="DawCubaseText" FontFamily="Menlo, Consolas, monospace"
+                                                         FontSize="12" Foreground="#C9D1D9" TextWrapping="Wrap" />
+                                    <Button Grid.Row="1" Padding="12,5" FontSize="12" HorizontalAlignment="Left"
+                                            Content="Copy Cubase" Classes="subtle" Click="CopyCubase_OnClick" />
+                                </Grid>
+                            </Grid>
+                            <TextBlock x:Name="DawNotesText" Grid.Row="2" Grid.ColumnSpan="2" Margin="0,12,0,0"
+                                       Foreground="#8B949E" TextWrapping="Wrap" />
+                            <TextBlock x:Name="DawCopyStatusText" Grid.Row="3" Grid.ColumnSpan="2" Margin="0,8,0,0"
+                                       FontSize="12" Foreground="#3FB950" />
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="4" Padding="18" Background="#0D1117" CornerRadius="8">
                         <Grid RowDefinitions="Auto,*">
                             <Grid ColumnDefinitions="110,170,70,120,*" ColumnSpacing="8">
                                 <TextBlock Foreground="#8B949E" Text="Time" />

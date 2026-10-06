@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -54,6 +55,8 @@ public partial class MainWindow : Window
     private MidiPortPairViewModel? _outputTestRow;
     private int _outputTestChannel = 1;
     private (string EndpointId, byte[] NoteOff)? _pendingNoteOff;
+
+    private DawRecommendation? _dawRecommendation;
 
     public MainWindow()
     {
@@ -175,6 +178,76 @@ public partial class MainWindow : Window
         ShowAllButton.Content = _filter is null ? "Showing all" : "Show all";
         UpdateLabelEditor();
         UpdateTestButton();
+        if (DawCard.IsVisible)
+        {
+            UpdateDawCard();
+        }
+    }
+
+    private void DawSettingsButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (_filter is null)
+        {
+            return;
+        }
+
+        UpdateDawCard();
+        DawCard.IsVisible = _dawRecommendation is not null;
+    }
+
+    private void DawDismiss_OnClick(object? sender, RoutedEventArgs e) => DawCard.IsVisible = false;
+
+    private async void CopyAbleton_OnClick(object? sender, RoutedEventArgs e) =>
+        await CopyToClipboardAsync(_dawRecommendation?.AbletonText, "Ableton settings copied.");
+
+    private async void CopyCubase_OnClick(object? sender, RoutedEventArgs e) =>
+        await CopyToClipboardAsync(_dawRecommendation?.CubaseText, "Cubase settings copied.");
+
+    private async void CopyAll_OnClick(object? sender, RoutedEventArgs e) =>
+        await CopyToClipboardAsync(_dawRecommendation?.ClipboardText, "Settings and notes copied.");
+
+    private async Task CopyToClipboardAsync(string? text, string confirmation)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard is null)
+        {
+            DawCopyStatusText.Text = "Clipboard is not available here.";
+            return;
+        }
+
+        await clipboard.SetTextAsync(text);
+        DawCopyStatusText.Text = confirmation;
+    }
+
+    private void UpdateDawCard()
+    {
+        if (_filter is null)
+        {
+            _dawRecommendation = null;
+            DawCard.IsVisible = false;
+            return;
+        }
+
+        _dawRecommendation = DawSettingsGenerator.Generate(
+            _filter.Pair.Name,
+            _filter.Label,
+            _filter.Activity,
+            hasOutput: _filter.Output is not null,
+            outputConfirmed: _filter.OutputConfirmed);
+
+        DawTitle.Text = _dawRecommendation.Title;
+        DawAbletonText.Text = _dawRecommendation.AbletonText;
+        DawCubaseText.Text = _dawRecommendation.CubaseText;
+        DawNotesText.Text = _dawRecommendation.Notes.Count == 0
+            ? string.Empty
+            : string.Join("\n\n", _dawRecommendation.Notes.Select(note => "• " + note));
+        DawNotesText.IsVisible = _dawRecommendation.Notes.Count > 0;
+        DawCopyStatusText.Text = string.Empty;
     }
 
     private void TestButton_OnClick(object? sender, RoutedEventArgs e)
@@ -267,6 +340,10 @@ public partial class MainWindow : Window
         row.SetOutputOutcome(outcome);
         ShowOutputResult(OutputTestEvaluator.Describe(
             outcome, row.Pair.Name, row.Label, row.Connection, _outputTestChannel));
+        if (DawCard.IsVisible)
+        {
+            UpdateDawCard();
+        }
     }
 
     private void ShowOutputResult(OutputTestResult result)
@@ -407,6 +484,7 @@ public partial class MainWindow : Window
 
         TestButton.Content = "Test input";
         TestButton.IsEnabled = _filter?.Input is not null && _monitoredInputIds.Count > 0;
+        DawSettingsButton.IsEnabled = _filter is not null;
     }
 
     private void SaveLabel_OnClick(object? sender, RoutedEventArgs e) => SaveDetails();
