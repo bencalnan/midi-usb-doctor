@@ -177,32 +177,40 @@ Selecting a row should reveal:
 
 ## Current status and known gaps
 
-Reviewed 2026-10-06 against the code on `main`.
+Reviewed 2026-10-06 against the code on `main`; updated the same day after the all-ports monitoring change.
 
 ### Verified
 
 - The solution builds with no warnings and all tests pass (5 tests).
 - Layering holds: `MidiUsbDoctor.Core` and the Avalonia app do not reference CoreMIDI types. The macOS adapter is hand-written P/Invoke with no third-party MIDI dependency, so a Windows adapter can be added behind `IMidiService` without redesign.
 - With the H12 connected the app lists eight `CME [H12] Port n` input/output pairs, each with input and output ready.
+- Every input is opened as soon as devices are discovered. Each port row shows an activity dot, the channels heard, the last message and its time, so playing an instrument identifies its port without clicking through ports.
+- Ports are paired by name (`MidiPortPairer` in Core, unit-tested), so a device with only an input no longer shifts other rows. H12 ports are listed first in numeric order, other devices after them.
+- Selecting a row filters the live log to that port; "Show all ports" clears the filter.
+- Messages are queued off the CoreMIDI thread and drained in batches on the UI thread, so bursts of clock or dense traffic do not schedule one UI update per message.
 - The app icon asset is embedded and loads at startup (see item 9 below for what it does and does not affect).
 
 ### Gaps against the MVP scope
 
-1. **Only one port is monitored at a time.** The core promise, "play each synth and see which port it arrived on", needs every input open at once. `CoreMidiService` already supports multiple connections; the limit is in `MainWindow`, which stops the previous monitor before starting the next.
-2. **Ports are paired by sorted index, not by name.** `PairEndpoints` sorts inputs and outputs by name and zips them positionally. Any device with only an input (a keyboard, a second interface) shifts every later pair out of alignment. There is also no H12 filtering, so IAC buses and other interfaces appear under the "H12 virtual ports" heading.
+1. ~~Only one port is monitored at a time.~~ Resolved 2026-10-06: all inputs are monitored together and each row shows its own activity.
+2. ~~Ports are paired by sorted index, not by name.~~ Resolved 2026-10-06: pairing is by name with H12 ports grouped first. Non-H12 devices are still shown, under the same list, rather than hidden.
 3. **One message per CoreMIDI packet.** The adapter emits a single `MidiMessage` per packet and the decoder reads only the first status byte. A packet carrying several messages loses all but the first, and SysEx that spans packets shows as "Data" rows rather than one SysEx summary.
 4. **Packet stride assumes Apple Silicon.** The 4-byte alignment applied between packets matches the ARM definition of `MIDIPacketNext`. On Intel Macs CoreMIDI does not pad between packets, so multi-packet lists would be misread. Not a problem on the development machine, but it needs a runtime check or a note before Intel is claimed as supported.
 5. **No hot-plug.** The CoreMIDI client is created with no notification callback and `IMidiService` has no device-changed event, so connecting or disconnecting hardware requires a manual refresh.
 6. **No output path.** `IMidiService` has no send method. Milestone 4's outbound Note/CC tests will need one, plus the matching Note Off cleanup.
-7. **Selecting a port with no input** leaves the previous port's monitor running while the button reads "This port has no input".
-8. **Test coverage is thin** relative to the verification strategy below: three decoder cases, no system messages, no fake `IMidiService` for discovery or high-volume tests, and the CoreMIDI test returns silently off macOS instead of being skipped.
+7. ~~Selecting a port with no input leaves the previous monitor running.~~ Resolved 2026-10-06: selection only filters the log and no longer starts or stops monitoring.
+8. **Test coverage is thin** relative to the verification strategy below. Pairing and per-port activity tracking are now covered, but the decoder has three cases and no system messages, there is no fake `IMidiService` for discovery or high-volume tests, and the CoreMIDI test returns silently off macOS instead of being skipped.
 9. **App icon.** `Window.Icon` is set from an embedded PNG. This will work on Windows and Linux. On macOS Avalonia implements `Window.Icon` as a no-op and the Dock shows the generic icon when run from `dotnet run`; a Dock icon needs a `.app` bundle with an `.icns` file, which belongs with the packaging work. The embedded PNG is 1254 px and about 1 MB; a 256 or 512 px copy is sufficient.
 
 ### Suggested order
 
-1. Monitor all inputs at once and pair ports by name (with an H12 filter). Both directly serve the "which port did that come from" question and unblock the dashboard table described above.
-2. Fix multi-message packets and multi-packet SysEx in the adapter, with decoder tests for each.
-3. Then proceed to Milestone 3 (labels and persistence) as planned.
+The shipping target is Windows; the Mac is the development machine. That favours platform-neutral work and brings the Windows adapter forward.
+
+1. ~~Monitor all inputs at once and pair ports by name.~~ Done 2026-10-06.
+2. Fix multi-message packets and multi-packet SysEx in the CoreMIDI adapter, with decoder tests for each. The same packet-splitting logic will be needed by the Windows adapter.
+3. Windows `IMidiService` adapter, as soon as a PC is available to test on. Nothing in Core or the UI should need to change.
+4. Milestone 3 (labels and persistence) as planned.
+5. Mac-only items (Intel packet alignment, `.app` bundle and Dock icon) last.
 
 ## Feature roadmap
 
@@ -213,7 +221,8 @@ The first technical version is working on macOS:
 - Avalonia desktop app running on .NET 10
 - Endpoint discovery through CoreMIDI (every endpoint, not yet filtered to the H12)
 - Input/output port pairs displayed; with the H12 connected this is the eight `CME [H12] Port n` pairs
-- Automatic monitoring of the selected port, one port at a time
+- All inputs monitored at once, with per-port activity, detected channels and last message shown in the port list
+- Port pairing by endpoint name, H12 ports first
 - Live Note On, Note Off, CC, program change, pitch bend, clock, transport, and SysEx display
 - MIDI channel, note, velocity, controller, and value decoding
 - Bounded traffic history so busy MIDI streams do not freeze the UI
@@ -287,7 +296,7 @@ The app currently supports manual refresh. Automatic hot-plug and disconnect not
 
 **Success:** playing each connected synth immediately identifies its system MIDI port, MIDI channel, and message type.
 
-The current version monitors the selected input automatically and displays a bounded live message history. Simultaneous monitoring of all inputs, which the success criterion depends on, is not yet implemented.
+The current version monitors every input at once, shows per-port activity and channels in the port list, and keeps a bounded live message history that can be filtered to one port.
 
 ### Milestone 3: labels and profiles — next
 

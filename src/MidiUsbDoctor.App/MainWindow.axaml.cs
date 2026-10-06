@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
@@ -15,13 +17,26 @@ namespace MidiUsbDoctor.App;
 
 public partial class MainWindow : Window
 {
-    private const int MaximumTrafficRows = 250;
-    private static readonly Regex TrailingNumber = new(@"(\d+)(?!.*\d)", RegexOptions.Compiled);
+    private const int MaximumVisibleRows = 250;
+    private const int MaximumHistoryRows = 1000;
+    private static readonly TimeSpan ActivityFlash = TimeSpan.FromMilliseconds(250);
+    private static readonly IBrush IdleBrush = Brush.Parse("#484F58");
+    private static readonly IBrush ListeningBrush = Brush.Parse("#D29922");
+    private static readonly IBrush ReceivingBrush = Brush.Parse("#3FB950");
+    private static readonly IBrush ErrorBrush = Brush.Parse("#F85149");
 
     private readonly IMidiService? _midiService;
     private readonly ObservableCollection<MidiPortPairViewModel> _ports = [];
     private readonly ObservableCollection<MidiTrafficRow> _traffic = [];
-    private string? _monitoredEndpointId;
+    private readonly List<MidiTrafficRow> _history = [];
+    private readonly Dictionary<string, MidiPortPairViewModel> _portsByInputId = [];
+    private readonly List<string> _monitoredInputIds = [];
+    private readonly ConcurrentQueue<MidiMessage> _pending = new();
+    private readonly DispatcherTimer _activityTimer;
+    private int _drainScheduled;
+    private DateTimeOffset _lastMessageAt;
+    private MidiPortPairViewModel? _filter;
+    private bool _hideClock = true;
 
     public MainWindow()
     {
@@ -36,9 +51,19 @@ public partial class MainWindow : Window
             _midiService.MessageReceived += MidiService_OnMessageReceived;
         }
 
-        Opened += async (_, _) => await RefreshEndpointsAsync();
+        _activityTimer = new DispatcherTimer(
+            TimeSpan.FromMilliseconds(100),
+            DispatcherPriority.Background,
+            ActivityTimer_OnTick);
+
+        Opened += async (_, _) =>
+        {
+            _activityTimer.Start();
+            await RefreshEndpointsAsync();
+        };
         Closed += async (_, _) =>
         {
+            _activityTimer.Stop();
             if (_midiService is not null)
             {
                 _midiService.MessageReceived -= MidiService_OnMessageReceived;
@@ -50,90 +75,23 @@ public partial class MainWindow : Window
     private async void RefreshDevices_OnClick(object? sender, RoutedEventArgs e) =>
         await RefreshEndpointsAsync();
 
-    private async void PortsList_OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        var selectedPort = PortsList.SelectedItem as MidiPortPairViewModel;
-        if (selectedPort?.Input is null)
-        {
-            MonitorButton.IsEnabled = false;
-            MonitorButton.Content = "This port has no input";
-            return;
-        }
+    private void ShowAll_OnClick(object? sender, RoutedEventArgs e) =>
+        PortsList.SelectedItem = null;
 
-        if (selectedPort.Input.Id != _monitoredEndpointId)
-        {
-            await StartMonitoringAsync(selectedPort);
-        }
+    private void HideClockToggle_OnIsCheckedChanged(object? sender, RoutedEventArgs e)
+    {
+        _hideClock = HideClockToggle.IsChecked == true;
+        RebuildVisibleTraffic();
+        UpdateTrafficHelpText();
     }
 
-    private async void MonitorButton_OnClick(object? sender, RoutedEventArgs e)
+    private void PortsList_OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (_midiService is null ||
-            PortsList.SelectedItem is not MidiPortPairViewModel selectedPort ||
-            selectedPort.Input is null)
-        {
-            return;
-        }
-
-        MonitorButton.IsEnabled = false;
-
-        try
-        {
-            if (_monitoredEndpointId == selectedPort.Input.Id)
-            {
-                await StopMonitoringAsync();
-                MonitorButton.Content = $"Start monitoring {selectedPort.DisplayName}";
-                return;
-            }
-
-            await StartMonitoringAsync(selectedPort);
-        }
-        catch (Exception exception)
-        {
-            MonitorStatusText.Text = "Error";
-            TrafficHelpText.Text = exception.Message;
-            ActivityIndicator.Background = Brush.Parse("#F85149");
-        }
-        finally
-        {
-            MonitorButton.IsEnabled = selectedPort.Input is not null;
-        }
-    }
-
-    private async Task StartMonitoringAsync(MidiPortPairViewModel selectedPort)
-    {
-        if (_midiService is null || selectedPort.Input is null)
-        {
-            return;
-        }
-
-        MonitorButton.IsEnabled = false;
-        MonitorButton.Content = "Starting monitor…";
-
-        try
-        {
-            await StopMonitoringAsync();
-            _traffic.Clear();
-            TrafficList.IsVisible = false;
-            EmptyTrafficText.IsVisible = true;
-
-            await _midiService.StartMonitoringAsync(selectedPort.Input.Id);
-            _monitoredEndpointId = selectedPort.Input.Id;
-            MonitorButton.Content = $"Stop monitoring {selectedPort.DisplayName}";
-            MonitorStatusText.Text = "Listening";
-            TrafficHelpText.Text = $"Listening to {selectedPort.Input.Name}. Play a note or move a control.";
-            ActivityIndicator.Background = Brush.Parse("#D29922");
-        }
-        catch (Exception exception)
-        {
-            MonitorStatusText.Text = "Error";
-            TrafficHelpText.Text = exception.Message;
-            ActivityIndicator.Background = Brush.Parse("#F85149");
-        }
-        finally
-        {
-            MonitorButton.IsEnabled = true;
-        }
+        _filter = PortsList.SelectedItem as MidiPortPairViewModel;
+        RebuildVisibleTraffic();
+        UpdateTrafficHelpText();
+        ShowAllButton.IsEnabled = _filter is not null;
+        ShowAllButton.Content = _filter is null ? "Showing all ports" : "Show all ports";
     }
 
     private async Task RefreshEndpointsAsync()
@@ -150,28 +108,42 @@ public partial class MainWindow : Window
 
         try
         {
-            await StopMonitoringAsync();
-            var discoveredEndpoints = await _midiService.GetEndpointsAsync();
-            var pairedPorts = PairEndpoints(discoveredEndpoints);
-            _ports.Clear();
+            await StopAllMonitoringAsync();
 
-            foreach (var port in pairedPorts)
+            var endpoints = await _midiService.GetEndpointsAsync();
+            var pairs = MidiPortPairer.Pair(endpoints);
+
+            PortsList.SelectedItem = null;
+            _ports.Clear();
+            _portsByInputId.Clear();
+            _history.Clear();
+            _traffic.Clear();
+
+            foreach (var pair in pairs)
             {
-                _ports.Add(port);
+                var row = new MidiPortPairViewModel(pair);
+                _ports.Add(row);
+                if (pair.Input is not null)
+                {
+                    _portsByInputId[pair.Input.Id] = row;
+                }
             }
 
-            var hasEndpoints = _ports.Count > 0;
-            EmptyEndpointsPanel.IsVisible = !hasEndpoints;
-            PortsList.IsVisible = hasEndpoints;
-            EndpointStatusText.Text = hasEndpoints
-                ? $"{_ports.Count} port pair{(_ports.Count == 1 ? string.Empty : "s")} available"
-                : "No endpoints detected — it is safe to connect the H12 later.";
+            var hasPorts = _ports.Count > 0;
+            EmptyEndpointsPanel.IsVisible = !hasPorts;
+            PortsList.IsVisible = hasPorts;
+
+            var listening = await StartMonitoringAllAsync();
+            EndpointStatusText.Text = DescribePorts(listening);
+            SetMonitorState(listening > 0 ? "Listening" : "Waiting", listening > 0 ? ListeningBrush : IdleBrush);
+            UpdateTrafficHelpText();
         }
         catch (Exception exception)
         {
             EmptyEndpointsPanel.IsVisible = true;
             PortsList.IsVisible = false;
             EndpointStatusText.Text = $"CoreMIDI discovery failed: {exception.Message}";
+            SetMonitorState("Error", ErrorBrush);
         }
         finally
         {
@@ -179,84 +151,216 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task StopMonitoringAsync()
+    private async Task<int> StartMonitoringAllAsync()
     {
-        if (_midiService is not null && _monitoredEndpointId is not null)
+        if (_midiService is null)
         {
-            await _midiService.StopMonitoringAsync(_monitoredEndpointId);
+            return 0;
         }
 
-        _monitoredEndpointId = null;
-        MonitorStatusText.Text = "Waiting";
-        TrafficHelpText.Text = "Select a port to start monitoring automatically.";
-        ActivityIndicator.Background = Brush.Parse("#484F58");
-
-        if (PortsList.SelectedItem is MidiPortPairViewModel selectedPort)
+        var listening = 0;
+        foreach (var row in _ports)
         {
-            MonitorButton.Content = selectedPort.Input is null
-                ? "This port has no input"
-                : $"Monitor {selectedPort.DisplayName}";
-        }
-    }
-
-    private void MidiService_OnMessageReceived(object? sender, MidiMessage message)
-    {
-        var decoded = MidiMessageDecoder.Decode(message);
-        Dispatcher.UIThread.Post(() =>
-        {
-            var description = string.IsNullOrWhiteSpace(decoded.Description)
-                ? decoded.RawData
-                : decoded.Description;
-
-            _traffic.Insert(0, new MidiTrafficRow(
-                message.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff"),
-                decoded.Channel?.ToString() ?? "—",
-                decoded.Type,
-                description));
-
-            while (_traffic.Count > MaximumTrafficRows)
+            if (row.Input is null)
             {
-                _traffic.RemoveAt(_traffic.Count - 1);
+                continue;
             }
 
-            EmptyTrafficText.IsVisible = false;
-            TrafficList.IsVisible = true;
-            MonitorStatusText.Text = "Receiving";
-            ActivityIndicator.Background = Brush.Parse("#3FB950");
-        });
-    }
-
-    private static MidiPortPairViewModel[] PairEndpoints(
-        System.Collections.Generic.IReadOnlyList<MidiEndpoint> endpoints)
-    {
-        var inputs = endpoints
-            .Where(endpoint => endpoint.Direction == MidiEndpointDirection.Input)
-            .OrderBy(endpoint => endpoint.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        var outputs = endpoints
-            .Where(endpoint => endpoint.Direction == MidiEndpointDirection.Output)
-            .OrderBy(endpoint => endpoint.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        var pairCount = Math.Max(inputs.Length, outputs.Length);
-        var pairs = new MidiPortPairViewModel[pairCount];
-
-        for (var index = 0; index < pairCount; index++)
-        {
-            var input = index < inputs.Length ? inputs[index] : null;
-            var output = index < outputs.Length ? outputs[index] : null;
-            var name = input?.Name ?? output?.Name ?? $"MIDI Port {index + 1}";
-            var numberMatch = TrailingNumber.Match(name);
-            var number = numberMatch.Success && int.TryParse(numberMatch.Value, out var parsedNumber)
-                ? parsedNumber
-                : index + 1;
-
-            pairs[index] = new MidiPortPairViewModel(
-                number,
-                $"Port {number} — {name}",
-                input,
-                output);
+            try
+            {
+                await _midiService.StartMonitoringAsync(row.Input.Id);
+                _monitoredInputIds.Add(row.Input.Id);
+                listening++;
+            }
+            catch (Exception exception)
+            {
+                row.SetInputError(exception.Message);
+            }
         }
 
-        return pairs.OrderBy(pair => pair.Number).ToArray();
+        return listening;
+    }
+
+    private async Task StopAllMonitoringAsync()
+    {
+        if (_midiService is not null)
+        {
+            foreach (var inputId in _monitoredInputIds)
+            {
+                try
+                {
+                    await _midiService.StopMonitoringAsync(inputId);
+                }
+                catch
+                {
+                    // The endpoint may already be gone; nothing useful to do.
+                }
+            }
+        }
+
+        _monitoredInputIds.Clear();
+        _pending.Clear();
+        SetMonitorState("Waiting", IdleBrush);
+    }
+
+    private string DescribePorts(int listening)
+    {
+        var h12Count = _ports.Count(row => row.Pair.IsH12);
+        var otherCount = _ports.Count - h12Count;
+
+        if (_ports.Count == 0)
+        {
+            return "No endpoints detected — it is safe to connect the H12 later.";
+        }
+
+        var parts = new List<string>();
+        if (h12Count > 0)
+        {
+            parts.Add($"{h12Count} H12 port{(h12Count == 1 ? string.Empty : "s")}");
+        }
+
+        if (otherCount > 0)
+        {
+            parts.Add($"{otherCount} other");
+        }
+
+        return $"{string.Join(", ", parts)} · listening on {listening} input{(listening == 1 ? string.Empty : "s")}";
+    }
+
+    private void UpdateTrafficHelpText()
+    {
+        var clockNote = _hideClock ? " Clock messages are hidden." : string.Empty;
+
+        if (_monitoredInputIds.Count == 0)
+        {
+            TrafficHelpText.Text = "Connect a device and refresh to start listening.";
+        }
+        else if (_filter is null)
+        {
+            TrafficHelpText.Text = "Listening on every input. Play a note and watch which port lights up." + clockNote;
+        }
+        else
+        {
+            TrafficHelpText.Text = $"Showing only {_filter.DisplayName}.{clockNote}";
+        }
+
+        EmptyTrafficText.Text = _filter is null
+            ? "Play a note to begin"
+            : $"No MIDI yet on {_filter.DisplayName}";
+    }
+
+    private void SetMonitorState(string text, IBrush brush)
+    {
+        if (MonitorStatusText.Text != text)
+        {
+            MonitorStatusText.Text = text;
+        }
+
+        if (!ReferenceEquals(ActivityIndicator.Background, brush))
+        {
+            ActivityIndicator.Background = brush;
+        }
+    }
+
+    // Called on CoreMIDI's thread. Queue the message and make sure one drain is scheduled.
+    private void MidiService_OnMessageReceived(object? sender, MidiMessage message)
+    {
+        _pending.Enqueue(message);
+        if (Interlocked.Exchange(ref _drainScheduled, 1) == 0)
+        {
+            Dispatcher.UIThread.Post(DrainPendingMessages, DispatcherPriority.Background);
+        }
+    }
+
+    private void DrainPendingMessages()
+    {
+        Volatile.Write(ref _drainScheduled, 0);
+
+        var received = false;
+        while (_pending.TryDequeue(out var message))
+        {
+            received = true;
+            var decoded = MidiMessageDecoder.Decode(message);
+            _portsByInputId.TryGetValue(message.EndpointId, out var row);
+            row?.Record(message, decoded);
+
+            var trafficRow = new MidiTrafficRow(
+                message.EndpointId,
+                message.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff"),
+                row?.Pair.Name ?? message.EndpointId,
+                decoded.Channel?.ToString() ?? "—",
+                decoded.Type,
+                string.IsNullOrWhiteSpace(decoded.Description) ? decoded.RawData : decoded.Description);
+
+            _history.Insert(0, trafficRow);
+            if (_history.Count > MaximumHistoryRows)
+            {
+                _history.RemoveAt(_history.Count - 1);
+            }
+
+            if (PassesFilters(trafficRow))
+            {
+                _traffic.Insert(0, trafficRow);
+                while (_traffic.Count > MaximumVisibleRows)
+                {
+                    _traffic.RemoveAt(_traffic.Count - 1);
+                }
+            }
+
+            _lastMessageAt = message.Timestamp;
+        }
+
+        if (received)
+        {
+            ShowTrafficListIfNeeded();
+            SetMonitorState("Receiving", ReceivingBrush);
+        }
+    }
+
+    private void ActivityTimer_OnTick(object? sender, EventArgs e)
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var row in _ports)
+        {
+            row.Tick(now, ActivityFlash);
+        }
+
+        if (_monitoredInputIds.Count > 0 &&
+            MonitorStatusText.Text == "Receiving" &&
+            now - _lastMessageAt > ActivityFlash)
+        {
+            SetMonitorState("Listening", ListeningBrush);
+        }
+    }
+
+    private void RebuildVisibleTraffic()
+    {
+        _traffic.Clear();
+        foreach (var row in _history.Where(PassesFilters).Take(MaximumVisibleRows))
+        {
+            _traffic.Add(row);
+        }
+
+        ShowTrafficListIfNeeded();
+    }
+
+    private bool PassesFilters(MidiTrafficRow row)
+    {
+        if (_hideClock && row.Type == "Clock")
+        {
+            return false;
+        }
+
+        return _filter is null || _filter.Input?.Id == row.EndpointId;
+    }
+
+    private void ShowTrafficListIfNeeded()
+    {
+        var hasRows = _traffic.Count > 0;
+        if (TrafficList.IsVisible != hasRows)
+        {
+            TrafficList.IsVisible = hasRows;
+            EmptyTrafficText.IsVisible = !hasRows;
+        }
     }
 }

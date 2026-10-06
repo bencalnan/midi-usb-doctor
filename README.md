@@ -8,9 +8,12 @@ See [PROJECT_BRIEF.md](PROJECT_BRIEF.md) for the product brief, roadmap, and the
 
 Early working foundation, reviewed 2026-10-06:
 
-- Lists CoreMIDI input and output endpoints and groups them into port rows. With the H12 connected this shows the eight `CME [H12] Port n` pairs.
-- Monitors the selected port and decodes Note On/Off, Control Change, Program Change, Pitch Bend, pressure, Clock, transport and SysEx into a bounded live log.
-- Not yet implemented: monitoring all ports at once, device labels, guided tests, diagnostics, DAW recommendations, hot-plug handling, Windows support.
+- Lists CoreMIDI input and output endpoints and pairs them into port rows by name. H12 ports are shown first, other devices after.
+- Listens on every input at once. Each row shows an activity dot, the channels heard, and the last message, so playing an instrument identifies its port.
+- Decodes Note On/Off, Control Change, Program Change, Pitch Bend, pressure, Clock, transport and SysEx into a bounded live log. Selecting a row filters the log to that port, and a "Hide clock" toggle (on by default) keeps MIDI Clock out of the log while port rows still report that clock was seen.
+- Not yet implemented: device labels, guided tests, diagnostics, DAW recommendations, hot-plug handling, Windows support.
+
+The shipping target is Windows. macOS is the development platform, and the MIDI layer is behind a platform-neutral interface so a Windows adapter can be added without changing the UI or core.
 
 Known gaps and the suggested order for tackling them are tracked in the brief under "Current status and known gaps".
 
@@ -47,7 +50,7 @@ The SDK is installed in `.dotnet/`, which is excluded from Git.
 
 | Path | Purpose |
 |---|---|
-| `src/MidiUsbDoctor.Core` | Platform-neutral MIDI endpoint and message records, plus the message decoder. No platform dependencies. |
+| `src/MidiUsbDoctor.Core` | Platform-neutral MIDI endpoint and message records, the message decoder, port pairing and per-port activity tracking. No platform dependencies. `Cme/` holds the H12-specific bits. |
 | `src/MidiUsbDoctor.Midi` | The `IMidiService` abstraction and the macOS CoreMIDI adapter (hand-written P/Invoke, no third-party MIDI library). |
 | `src/MidiUsbDoctor.App` | Avalonia desktop UI. Currently a single window with code-behind. |
 | `tests/MidiUsbDoctor.Tests` | xUnit tests for Core and the CoreMIDI adapter. |
