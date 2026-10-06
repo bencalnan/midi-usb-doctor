@@ -125,7 +125,7 @@
                                                            Text="{Binding Title}" />
                                                 <TextBlock FontSize="11" Foreground="#6E7681"
                                                            TextTrimming="CharacterEllipsis"
-                                                           IsVisible="{Binding HasLabel}"
+                                                           IsVisible="{Binding HasSubtitle}"
                                                            Text="{Binding Subtitle}" />
                                             </StackPanel>
                                             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8"
@@ -161,17 +161,26 @@
                         <StackPanel Spacing="8">
                             <TextBlock x:Name="LabelEditorTitle" FontSize="12" Foreground="#8B949E"
                                        TextTrimming="CharacterEllipsis"
-                                       Text="Device connected to this port" />
-                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-                                <TextBox x:Name="LabelTextBox" PlaceholderText="e.g. Bass Station II"
+                                       Text="What is on this port?" />
+                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto"
+                                  ColumnSpacing="10" RowSpacing="6">
+                                <TextBlock FontSize="12" Foreground="#C9D1D9" VerticalAlignment="Center"
+                                           Text="Instrument" />
+                                <TextBox x:Name="LabelTextBox" Grid.Column="1"
+                                         PlaceholderText="e.g. Bass Station II"
                                          KeyDown="LabelTextBox_OnKeyDown" />
-                                <Button x:Name="SaveLabelButton" Grid.Column="1" Padding="14,6"
-                                        VerticalAlignment="Stretch" Content="Save"
-                                        Classes="accent-green" Click="SaveLabel_OnClick" />
-                                <Button x:Name="ClearLabelButton" Grid.Column="2" Padding="14,6"
-                                        VerticalAlignment="Stretch" Content="Clear"
-                                        Classes="subtle" Click="ClearLabel_OnClick" />
+                                <TextBlock Grid.Row="1" FontSize="12" Foreground="#C9D1D9"
+                                           VerticalAlignment="Center" Text="Plugged into" />
+                                <TextBox x:Name="ConnectionTextBox" Grid.Row="1" Grid.Column="1"
+                                         PlaceholderText="e.g. USB host 3, or DIN 1"
+                                         KeyDown="LabelTextBox_OnKeyDown" />
                             </Grid>
+                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                                <Button x:Name="ClearLabelButton" Padding="14,6" Content="Clear"
+                                        Classes="subtle" Click="ClearLabel_OnClick" />
+                                <Button x:Name="SaveLabelButton" Padding="14,6" Content="Save"
+                                        Classes="accent-green" Click="SaveLabel_OnClick" />
+                            </StackPanel>
                             <TextBlock x:Name="LabelStatusText" FontSize="12" Foreground="#8B949E"
                                        TextWrapping="Wrap" />
                         </StackPanel>

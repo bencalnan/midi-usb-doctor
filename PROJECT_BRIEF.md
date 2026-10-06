@@ -189,7 +189,7 @@ Reviewed 2026-10-06 against the code on `main`; updated the same day after the a
 - Selecting a row filters the live log to that port; "Show all ports" clears the filter.
 - Messages are queued off the CoreMIDI thread and drained in batches on the UI thread, so bursts of clock or dense traffic do not schedule one UI update per message.
 - A "Hide clock" toggle (on by default) keeps MIDI Clock out of the log; port rows still report clock.
-- Device labels: selecting a port shows an inline editor. Labels are keyed by port name, stored as JSON under the user's application-data folder (`DeviceLabelStore` in Core, unit-tested), restored at startup, and kept for ports that are not currently connected.
+- Device labels: selecting a port shows an inline editor for the instrument name and the H12 socket it is plugged into ("USB host 3", "DIN 1"). Both are keyed by port name, stored as JSON under the user's application-data folder (`DeviceLabelStore` in Core, unit-tested), restored at startup, and kept for ports that are not currently connected.
 - A Windows adapter (`WinMmMidiService`) and a platform factory exist and compile. They are untested on Windows; see item 10.
 - The app icon asset is embedded and loads at startup (see item 9 below for what it does and does not affect).
 
@@ -342,6 +342,10 @@ Labels are keyed by port name and stored in `device-labels.json` under the appli
 **Success:** if feasible, show paths such as `USB Host 1 -> Virtual Port 1` and `Virtual Port 1 -> MIDI Out 1` without requiring manual entry.
 
 This milestone is deliberately outside the MVP because no public CME programming API was identified in the source discussion.
+
+Findings so far (2026-10-06, on macOS): the H12 exposes exactly two USB interfaces, a standard audio-control stub and one USB MIDI streaming interface carrying the eight virtual ports. There is no HID or vendor-specific interface, so UxMIDI Tools must configure the device over MIDI SysEx on one of those ports. That makes the routing exchange observable with this app's own monitor (SysEx rows with clock hidden) while UxMIDI Tools reads the device. Until that is investigated, the socket a device is plugged into is recorded manually in the label editor.
+
+Suggested experiment: run the app and UxMIDI Tools side by side, trigger a routing read in UxMIDI Tools, and note which port carries SysEx and how many bytes. Listen only; do not send. If UxMIDI Tools is the browser version, its JavaScript documents the format directly. Asking CME for the SysEx specification is the clean route and worth doing in parallel.
 
 ## Data model sketch
 

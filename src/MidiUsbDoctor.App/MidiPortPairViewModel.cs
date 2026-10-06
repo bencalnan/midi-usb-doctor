@@ -22,6 +22,7 @@ public sealed class MidiPortPairViewModel : INotifyPropertyChanged
     private string? _inputError;
     private bool _isActive;
     private string? _label;
+    private string? _connection;
 
     public MidiPortPairViewModel(MidiPortPair pair)
     {
@@ -52,18 +53,60 @@ public sealed class MidiPortPairViewModel : INotifyPropertyChanged
             _label = normalized;
             Raise(nameof(Label));
             Raise(nameof(HasLabel));
+            Raise(nameof(HasSubtitle));
             Raise(nameof(Title));
+            Raise(nameof(Subtitle));
+        }
+    }
+
+    /// <summary>Where the instrument is plugged in, such as "USB host 3" or "DIN 1". Null when unset.</summary>
+    public string? Connection
+    {
+        get => _connection;
+        set
+        {
+            var normalized = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+            if (_connection == normalized)
+            {
+                return;
+            }
+
+            _connection = normalized;
+            Raise(nameof(Connection));
+            Raise(nameof(HasSubtitle));
             Raise(nameof(Subtitle));
         }
     }
 
     public bool HasLabel => _label is not null;
 
+    public bool HasSubtitle => _label is not null || _connection is not null;
+
     /// <summary>What the user sees first: the label when set, otherwise the port name.</summary>
     public string Title => _label ?? DisplayName;
 
-    /// <summary>The port name, shown under the label when a label is set.</summary>
-    public string Subtitle => DisplayName;
+    /// <summary>
+    /// Shown under the title: the port name when a label hides it, and the connection when known.
+    /// For example "CME [H12] Port 2 · USB host 3".
+    /// </summary>
+    public string Subtitle
+    {
+        get
+        {
+            var parts = new System.Collections.Generic.List<string>(2);
+            if (_label is not null)
+            {
+                parts.Add(DisplayName);
+            }
+
+            if (_connection is not null)
+            {
+                parts.Add(_connection);
+            }
+
+            return string.Join(" · ", parts);
+        }
+    }
 
     public string InputStatus =>
         _inputError is not null ? "Input error"

@@ -97,19 +97,20 @@ public partial class MainWindow : Window
         UpdateLabelEditor();
     }
 
-    private void SaveLabel_OnClick(object? sender, RoutedEventArgs e) => SaveLabel();
+    private void SaveLabel_OnClick(object? sender, RoutedEventArgs e) => SaveDetails();
 
     private void ClearLabel_OnClick(object? sender, RoutedEventArgs e)
     {
         LabelTextBox.Text = string.Empty;
-        SaveLabel();
+        ConnectionTextBox.Text = string.Empty;
+        SaveDetails();
     }
 
     private void LabelTextBox_OnKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
         {
-            SaveLabel();
+            SaveDetails();
             e.Handled = true;
         }
     }
@@ -122,30 +123,32 @@ public partial class MainWindow : Window
             return;
         }
 
-        LabelEditorTitle.Text = $"Device connected to {_filter.DisplayName}";
+        LabelEditorTitle.Text = $"What is on {_filter.DisplayName}?";
         LabelTextBox.Text = _filter.Label ?? string.Empty;
-        LabelStatusText.Text = _filter.HasLabel
-            ? "Shown in place of the port name."
-            : "Give this port a name so results read as your instrument, not a port number.";
+        ConnectionTextBox.Text = _filter.Connection ?? string.Empty;
+        LabelStatusText.Text = _filter.HasSubtitle
+            ? "Saved with this port. The app cannot read the H12 routing, so the socket is what you tell it."
+            : "Name the instrument and note which H12 socket it is plugged into. The app cannot read that from the H12 itself.";
     }
 
-    private void SaveLabel()
+    private void SaveDetails()
     {
         if (_filter is null)
         {
             return;
         }
 
-        var label = LabelTextBox.Text?.Trim();
-        _filter.Label = label;
-        _labels.SetLabel(_filter.Pair.Name, label);
+        var info = DevicePortInfo.Normalize(LabelTextBox.Text, ConnectionTextBox.Text);
+        _filter.Label = info.Label;
+        _filter.Connection = info.Connection;
+        _labels.Set(_filter.Pair.Name, info);
 
         try
         {
             _labels.Save();
-            LabelStatusText.Text = string.IsNullOrEmpty(label)
-                ? "Name cleared."
-                : $"Saved. {_filter.Pair.Name} will show as {label} from now on.";
+            LabelStatusText.Text = info.IsEmpty
+                ? "Cleared."
+                : $"Saved. {_filter.Pair.Name} will show as {_filter.Title}{(info.Connection is null ? string.Empty : $" on {info.Connection}")}.";
         }
         catch (Exception exception)
         {
@@ -182,7 +185,8 @@ public partial class MainWindow : Window
 
             foreach (var pair in pairs)
             {
-                var row = new MidiPortPairViewModel(pair) { Label = _labels.GetLabel(pair.Name) };
+                var saved = _labels.Get(pair.Name);
+                var row = new MidiPortPairViewModel(pair) { Label = saved?.Label, Connection = saved?.Connection };
                 _ports.Add(row);
                 if (pair.Input is not null)
                 {

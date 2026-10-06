@@ -11,7 +11,7 @@ Early working foundation, reviewed 2026-10-06:
 - Lists CoreMIDI input and output endpoints and pairs them into port rows by name. H12 ports are shown first, other devices after.
 - Listens on every input at once. Each row shows an activity dot, the channels heard, and the last message, so playing an instrument identifies its port.
 - Decodes Note On/Off, Control Change, Program Change, Pitch Bend, pressure, Clock, transport and SysEx into a bounded live log. Selecting a row filters the log to that port, and a "Hide clock" toggle (on by default) keeps MIDI Clock out of the log while port rows still report that clock was seen.
-- Select a port to give it a device name such as "Bass Station II". Names are saved to disk, restored on launch, and shown in place of the port name in the list and the log.
+- Select a port to record which instrument is on it, such as "Bass Station II", and which H12 socket it is plugged into, such as "USB host 3". Both are saved to disk, restored on launch, and shown in the port list; the instrument name also replaces the port name in the log.
 - Not yet implemented: guided tests, diagnostics, DAW recommendations, hot-plug handling.
 
 The shipping target is Windows. macOS is the development platform. The MIDI layer sits behind a platform-neutral interface with a CoreMIDI adapter for macOS and a WinMM adapter for Windows. The Windows adapter compiles but has not yet been run on a PC.
@@ -70,7 +70,9 @@ swift tools/diagnose-midi.swift
 
 ## Where labels are stored
 
-Device names live in `device-labels.json` under the application-data folder: `%APPDATA%\MidiUsbDoctor\` on Windows and `~/.config/MidiUsbDoctor/` on macOS. Delete the file to reset all names.
+Device names and socket notes live in `device-labels.json` under the application-data folder: `%APPDATA%\MidiUsbDoctor\` on Windows and `~/.config/MidiUsbDoctor/` on macOS. Delete the file to reset them.
+
+The socket is something you type, not something the app detects. The H12 presents only a standard USB MIDI interface to the computer, so its routing matrix (which USB host socket or DIN connector feeds which virtual port) is not visible to the operating system. See "CME routing awareness" in the brief for the options.
 
 ## App icon
 

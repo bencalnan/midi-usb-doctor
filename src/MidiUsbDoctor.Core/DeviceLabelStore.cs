@@ -2,16 +2,26 @@ using System.Text.Json;
 
 namespace MidiUsbDoctor.Core;
 
+/// <summary>What the user has told us about one port: the instrument and where it is plugged in.</summary>
+public sealed record DevicePortInfo(string? Label, string? Connection)
+{
+    public bool IsEmpty => Label is null && Connection is null;
+
+    public static DevicePortInfo Normalize(string? label, string? connection) => new(
+        string.IsNullOrWhiteSpace(label) ? null : label.Trim(),
+        string.IsNullOrWhiteSpace(connection) ? null : connection.Trim());
+}
+
 /// <summary>
-/// User-assigned device names for ports, such as "CME [H12] Port 1" = "Bass Station II".
-/// Labels are keyed by port name rather than platform endpoint ID so they survive
-/// reconnects, USB port changes and a move between macOS and Windows. Labels for ports
+/// User-assigned details for ports, such as "CME [H12] Port 1" = "Bass Station II" on "USB host 3".
+/// Entries are keyed by port name rather than platform endpoint ID so they survive
+/// reconnects, USB port changes and a move between macOS and Windows. Entries for ports
 /// that are not currently connected are kept.
 /// </summary>
 public sealed class DeviceLabelStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
-    private readonly Dictionary<string, string> _labels = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DevicePortInfo> _ports = new(StringComparer.OrdinalIgnoreCase);
 
     public DeviceLabelStore(string filePath)
     {
@@ -20,14 +30,14 @@ public sealed class DeviceLabelStore
 
     public string FilePath { get; }
 
-    public IReadOnlyDictionary<string, string> Labels => _labels;
+    public IReadOnlyDictionary<string, DevicePortInfo> Ports => _ports;
 
     public static string DefaultFilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "MidiUsbDoctor",
         "device-labels.json");
 
-    /// <summary>Loads labels from disk. A missing or unreadable file yields an empty store.</summary>
+    /// <summary>Loads from disk. A missing or unreadable file yields an empty store.</summary>
     public static DeviceLabelStore LoadFrom(string filePath)
     {
         var store = new DeviceLabelStore(filePath);
@@ -40,16 +50,25 @@ public sealed class DeviceLabelStore
         {
             using var stream = File.OpenRead(filePath);
             var file = JsonSerializer.Deserialize<LabelFile>(stream, JsonOptions);
-            if (file?.Labels is null)
+            if (file is null)
             {
                 return store;
             }
 
-            foreach (var (portName, label) in file.Labels)
+            // Version 1 files held a flat name -> label map.
+            if (file.Labels is not null)
             {
-                if (!string.IsNullOrWhiteSpace(portName) && !string.IsNullOrWhiteSpace(label))
+                foreach (var (portName, label) in file.Labels)
                 {
-                    store._labels[portName.Trim()] = label.Trim();
+                    store.Set(portName, DevicePortInfo.Normalize(label, null));
+                }
+            }
+
+            if (file.Ports is not null)
+            {
+                foreach (var (portName, entry) in file.Ports)
+                {
+                    store.Set(portName, DevicePortInfo.Normalize(entry?.Label, entry?.Connection));
                 }
             }
         }
@@ -67,23 +86,42 @@ public sealed class DeviceLabelStore
         return store;
     }
 
-    public string? GetLabel(string portName) =>
-        _labels.TryGetValue(portName.Trim(), out var label) ? label : null;
+    public DevicePortInfo? Get(string portName) =>
+        _ports.TryGetValue(portName.Trim(), out var info) ? info : null;
 
-    public void SetLabel(string portName, string? label)
+    public string? GetLabel(string portName) => Get(portName)?.Label;
+
+    public string? GetConnection(string portName) => Get(portName)?.Connection;
+
+    /// <summary>Replaces the entry for a port. An entry with nothing in it is removed.</summary>
+    public void Set(string portName, DevicePortInfo info)
     {
-        if (string.IsNullOrWhiteSpace(label))
+        var key = portName.Trim();
+        if (string.IsNullOrEmpty(key))
         {
-            _labels.Remove(portName.Trim());
             return;
         }
 
-        _labels[portName.Trim()] = label.Trim();
+        var normalized = DevicePortInfo.Normalize(info.Label, info.Connection);
+        if (normalized.IsEmpty)
+        {
+            _ports.Remove(key);
+        }
+        else
+        {
+            _ports[key] = normalized;
+        }
     }
 
-    public bool RemoveLabel(string portName) => _labels.Remove(portName.Trim());
+    public void SetLabel(string portName, string? label) =>
+        Set(portName, new DevicePortInfo(label, Get(portName)?.Connection));
 
-    /// <summary>Writes the labels to disk, creating the folder if needed.</summary>
+    public void SetConnection(string portName, string? connection) =>
+        Set(portName, new DevicePortInfo(Get(portName)?.Label, connection));
+
+    public bool Remove(string portName) => _ports.Remove(portName.Trim());
+
+    /// <summary>Writes to disk, creating the folder if needed.</summary>
     public void Save()
     {
         var directory = Path.GetDirectoryName(FilePath);
@@ -92,7 +130,14 @@ public sealed class DeviceLabelStore
             Directory.CreateDirectory(directory);
         }
 
-        var file = new LabelFile { Labels = new Dictionary<string, string>(_labels, StringComparer.OrdinalIgnoreCase) };
+        var file = new LabelFile
+        {
+            Version = 2,
+            Ports = _ports.ToDictionary(
+                pair => pair.Key,
+                pair => new PortEntry { Label = pair.Value.Label, Connection = pair.Value.Connection },
+                StringComparer.OrdinalIgnoreCase),
+        };
         var temporaryPath = FilePath + ".tmp";
 
         using (var stream = File.Create(temporaryPath))
@@ -105,7 +150,14 @@ public sealed class DeviceLabelStore
 
     private sealed class LabelFile
     {
-        public int Version { get; set; } = 1;
+        public int Version { get; set; } = 2;
         public Dictionary<string, string>? Labels { get; set; }
+        public Dictionary<string, PortEntry>? Ports { get; set; }
+    }
+
+    private sealed class PortEntry
+    {
+        public string? Label { get; set; }
+        public string? Connection { get; set; }
     }
 }
