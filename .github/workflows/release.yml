@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.rid }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: macos-latest
+            rid: osx-arm64
+          - os: macos-latest
+            rid: osx-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET (version from global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Version from tag
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Test
+        run: dotnet test MidiUsbDoctor.slnx --configuration Release
+
+      - name: Publish and zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          dotnet publish src/MidiUsbDoctor.App -c Release -r ${{ matrix.rid }} --self-contained `
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:Version=$env:VERSION -o publish
+          Compress-Archive -Path publish\* -DestinationPath "MidiUsbDoctor-$env:VERSION-${{ matrix.rid }}.zip"
+
+      - name: Publish and bundle (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          dotnet publish src/MidiUsbDoctor.App -c Release -r ${{ matrix.rid }} --self-contained \
+            -p:Version=$VERSION -o publish
+          APP="MIDI USB Doctor.app"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp -R publish/. "$APP/Contents/MacOS/"
+          cp assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+          sed "s/__VERSION__/$VERSION/g" packaging/macos/Info.plist > "$APP/Contents/Info.plist"
+          chmod +x "$APP/Contents/MacOS/MidiUsbDoctor"
+          # Ad-hoc signature: Apple Silicon refuses to launch unsigned binaries at all.
+          codesign --force --deep --sign - "$APP"
+          ditto -c -k --keepParent "$APP" "MidiUsbDoctor-$VERSION-${{ matrix.rid }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.rid }}
+          path: MidiUsbDoctor-*.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}

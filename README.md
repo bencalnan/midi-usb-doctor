@@ -29,7 +29,20 @@ Built around the CME H12MIDI Pro multi-port interface, but it works with any MID
 
 Linux is not supported: there is no ALSA adapter yet, though the architecture allows one.
 
-## Getting started
+## Download
+
+Prebuilt apps are on the [releases page](https://github.com/bencalnan/midi-usb-doctor/releases). Nothing else needs installing.
+
+- **Windows**: download the `win-x64` zip, extract it, run `MidiUsbDoctor.exe`. SmartScreen will warn the first time because the build is not code-signed; choose "More info", then "Run anyway".
+- **macOS**: download the `osx-arm64` zip for Apple Silicon or `osx-x64` for Intel, extract it, and drag *MIDI USB Doctor* to Applications. The app is not notarised, so macOS will refuse to open it on the first attempt. Either open System Settings, Privacy & Security, and choose "Open Anyway", or run this once in Terminal:
+
+  ```bash
+  xattr -cr "/Applications/MIDI USB Doctor.app"
+  ```
+
+Code signing and notarisation are planned (issue #8); until then the warnings are expected.
+
+## Building from source
 
 You need the .NET 10 SDK. On macOS the repository can install a private copy so nothing is needed system-wide; on Windows install the SDK from Microsoft.
 
