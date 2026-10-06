@@ -41,6 +41,7 @@ public partial class MainWindow : Window
     private DateTimeOffset _lastMessageAt;
     private MidiPortPairViewModel? _filter;
     private bool _hideClock = true;
+    private bool _isPaused;
 
     // Device test state. A test listens to one row for a fixed window and then explains what it heard.
     private MidiPortPairViewModel? _testRow;
@@ -87,6 +88,61 @@ public partial class MainWindow : Window
 
     private async void RefreshDevices_OnClick(object? sender, RoutedEventArgs e) =>
         await RefreshEndpointsAsync();
+
+    private async void PauseButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        PauseButton.IsEnabled = false;
+        try
+        {
+            if (_isPaused)
+            {
+                await ResumeListeningAsync();
+            }
+            else
+            {
+                await PauseListeningAsync();
+            }
+        }
+        finally
+        {
+            PauseButton.IsEnabled = _midiService is not null && _ports.Count > 0;
+        }
+    }
+
+    /// <summary>Releases every port so another application (a DAW, UxMIDI Tools) can open them.</summary>
+    private async Task PauseListeningAsync()
+    {
+        CancelTest();
+        await StopAllMonitoringAsync();
+        _isPaused = true;
+
+        foreach (var row in _ports)
+        {
+            row.SetListening(false);
+        }
+
+        PauseButton.Content = "Resume listening";
+        EndpointStatusText.Text = $"{DescribePortCounts()} · paused, ports released";
+        SetMonitorState("Paused", IdleBrush);
+        UpdateTrafficHelpText();
+        UpdateTestButton();
+    }
+
+    private async Task ResumeListeningAsync()
+    {
+        _isPaused = false;
+        foreach (var row in _ports)
+        {
+            row.SetListening(true);
+        }
+
+        var listening = await StartMonitoringAllAsync();
+        PauseButton.Content = "Pause listening";
+        EndpointStatusText.Text = DescribePorts(listening);
+        SetMonitorState(listening > 0 ? "Listening" : "Waiting", listening > 0 ? ListeningBrush : IdleBrush);
+        UpdateTrafficHelpText();
+        UpdateTestButton();
+    }
 
     private void ShowAll_OnClick(object? sender, RoutedEventArgs e) =>
         PortsList.SelectedItem = null;
@@ -337,10 +393,25 @@ public partial class MainWindow : Window
             PortsList.IsVisible = hasPorts;
 
             CancelTest();
-            var listening = await StartMonitoringAllAsync();
-            EndpointStatusText.Text = DescribePorts(listening);
+            if (_isPaused)
+            {
+                foreach (var row in _ports)
+                {
+                    row.SetListening(false);
+                }
+
+                EndpointStatusText.Text = $"{DescribePortCounts()} · paused, ports released";
+                SetMonitorState("Paused", IdleBrush);
+            }
+            else
+            {
+                var listening = await StartMonitoringAllAsync();
+                EndpointStatusText.Text = DescribePorts(listening);
+                SetMonitorState(listening > 0 ? "Listening" : "Waiting", listening > 0 ? ListeningBrush : IdleBrush);
+            }
+
+            PauseButton.IsEnabled = _ports.Count > 0;
             UpdateTestButton();
-            SetMonitorState(listening > 0 ? "Listening" : "Waiting", listening > 0 ? ListeningBrush : IdleBrush);
             UpdateTrafficHelpText();
         }
         catch (Exception exception)
@@ -377,6 +448,12 @@ public partial class MainWindow : Window
                 _monitoredInputIds.Add(row.Input.Id);
                 listening++;
             }
+            catch (MidiPortInUseException)
+            {
+                row.SetInputError(
+                    "Another application has this port. Close it, or pause it, then press Refresh devices.",
+                    inUseElsewhere: true);
+            }
             catch (Exception exception)
             {
                 row.SetInputError(exception.Message);
@@ -410,14 +487,20 @@ public partial class MainWindow : Window
 
     private string DescribePorts(int listening)
     {
-        var h12Count = _ports.Count(row => row.Pair.IsH12);
-        var otherCount = _ports.Count - h12Count;
-
         if (_ports.Count == 0)
         {
             return "No endpoints detected — it is safe to connect the H12 later.";
         }
 
+        var inUse = _ports.Count(row => row.InputStatus == "Input in use elsewhere");
+        var suffix = inUse > 0 ? $", {inUse} held by another app" : string.Empty;
+        return $"{DescribePortCounts()} · listening on {listening} input{(listening == 1 ? string.Empty : "s")}{suffix}";
+    }
+
+    private string DescribePortCounts()
+    {
+        var h12Count = _ports.Count(row => row.Pair.IsH12);
+        var otherCount = _ports.Count - h12Count;
         var parts = new List<string>();
         if (h12Count > 0)
         {
@@ -429,14 +512,18 @@ public partial class MainWindow : Window
             parts.Add($"{otherCount} other");
         }
 
-        return $"{string.Join(", ", parts)} · listening on {listening} input{(listening == 1 ? string.Empty : "s")}";
+        return string.Join(", ", parts);
     }
 
     private void UpdateTrafficHelpText()
     {
         var clockNote = _hideClock ? " Clock messages are hidden." : string.Empty;
 
-        if (_monitoredInputIds.Count == 0)
+        if (_isPaused)
+        {
+            TrafficHelpText.Text = "Listening is paused and every port is released, so a DAW or UxMIDI Tools can use them. Press Resume listening when you are done.";
+        }
+        else if (_monitoredInputIds.Count == 0)
         {
             TrafficHelpText.Text = "Connect a device and refresh to start listening.";
         }

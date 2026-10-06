@@ -68,7 +68,7 @@
 
     <Grid RowDefinitions="Auto,*" Background="#0D1117">
         <Border Grid.Row="0" Padding="28,22" Background="#161B22">
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="16">
                 <Image Source="/Assets/AppIcon.png"
                        Width="{Binding #TitleBlock.Bounds.Height}"
                        Height="{Binding #TitleBlock.Bounds.Height}"
@@ -81,7 +81,12 @@
                     <TextBlock Foreground="#8B949E"
                                Text="See where your MIDI is going — and where it stops." />
                 </StackPanel>
-                <Button x:Name="RefreshButton" Grid.Column="2" Padding="18,10"
+                <Button x:Name="PauseButton" Grid.Column="2" Padding="18,10"
+                        VerticalAlignment="Center" Content="Pause listening"
+                        IsEnabled="False" Classes="subtle"
+                        ToolTip.Tip="Release every MIDI port so a DAW or UxMIDI Tools can use them"
+                        Click="PauseButton_OnClick" />
+                <Button x:Name="RefreshButton" Grid.Column="3" Padding="18,10"
                         VerticalAlignment="Center" Content="Refresh devices"
                         Classes="accent-green"
                         Click="RefreshDevices_OnClick" />

@@ -20,6 +20,8 @@ public sealed class MidiPortPairViewModel : INotifyPropertyChanged
 
     private readonly MidiPortActivity _activity = new();
     private string? _inputError;
+    private bool _inputInUse;
+    private bool _isListening = true;
     private bool _isActive;
     private string? _label;
     private string? _connection;
@@ -109,8 +111,10 @@ public sealed class MidiPortPairViewModel : INotifyPropertyChanged
     }
 
     public string InputStatus =>
-        _inputError is not null ? "Input error"
-        : Input is null ? "Input missing"
+        Input is null ? "Input missing"
+        : _inputInUse ? "Input in use elsewhere"
+        : _inputError is not null ? "Input error"
+        : !_isListening ? "Input paused"
         : _activity.MessageCount > 0 ? "Input receiving"
         : "Input ready";
 
@@ -133,7 +137,9 @@ public sealed class MidiPortPairViewModel : INotifyPropertyChanged
             var last = _activity.LastMessage;
             if (last is null)
             {
-                return Input is null ? "Nothing to listen to" : "No MIDI yet";
+                return Input is null ? "Nothing to listen to"
+                    : _isListening ? "No MIDI yet"
+                    : "Released";
             }
 
             return string.IsNullOrWhiteSpace(last.Description)
@@ -147,6 +153,7 @@ public sealed class MidiPortPairViewModel : INotifyPropertyChanged
 
     public IBrush ActivityBrush =>
         _inputError is not null ? ErrorBrush
+        : !_isListening ? IdleBrush
         : _isActive ? ActiveBrush
         : _activity.MessageCount > 0 ? SeenBrush
         : IdleBrush;
@@ -182,9 +189,26 @@ public sealed class MidiPortPairViewModel : INotifyPropertyChanged
         }
     }
 
-    public void SetInputError(string message)
+    public void SetInputError(string message, bool inUseElsewhere = false)
     {
         _inputError = message;
+        _inputInUse = inUseElsewhere;
+        Raise(nameof(InputStatus));
+        Raise(nameof(LastMessageText));
+        Raise(nameof(ActivityBrush));
+    }
+
+    /// <summary>Marks whether the app currently holds this port's input open.</summary>
+    public void SetListening(bool isListening)
+    {
+        _inputError = null;
+        _inputInUse = false;
+        _isListening = isListening;
+        if (!isListening)
+        {
+            _isActive = false;
+        }
+
         Raise(nameof(InputStatus));
         Raise(nameof(LastMessageText));
         Raise(nameof(ActivityBrush));
