@@ -21,4 +21,5 @@
     <ProjectReference Include="..\MidiUsbDoctor.Core\MidiUsbDoctor.Core.csproj" />
     <ProjectReference Include="..\MidiUsbDoctor.Midi\MidiUsbDoctor.Midi.csproj" />
   </ItemGroup>
+
 </Project>

@@ -50,15 +50,20 @@ public partial class MainWindow : Window
     private async void RefreshDevices_OnClick(object? sender, RoutedEventArgs e) =>
         await RefreshEndpointsAsync();
 
-    private void PortsList_OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    private async void PortsList_OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         var selectedPort = PortsList.SelectedItem as MidiPortPairViewModel;
-        MonitorButton.IsEnabled = selectedPort?.Input is not null;
-        MonitorButton.Content = selectedPort?.Input is null
-            ? "This port has no input"
-            : selectedPort.Input.Id == _monitoredEndpointId
-                ? "Stop monitoring"
-                : $"Monitor {selectedPort.DisplayName}";
+        if (selectedPort?.Input is null)
+        {
+            MonitorButton.IsEnabled = false;
+            MonitorButton.Content = "This port has no input";
+            return;
+        }
+
+        if (selectedPort.Input.Id != _monitoredEndpointId)
+        {
+            await StartMonitoringAsync(selectedPort);
+        }
     }
 
     private async void MonitorButton_OnClick(object? sender, RoutedEventArgs e)
@@ -77,20 +82,11 @@ public partial class MainWindow : Window
             if (_monitoredEndpointId == selectedPort.Input.Id)
             {
                 await StopMonitoringAsync();
+                MonitorButton.Content = $"Start monitoring {selectedPort.DisplayName}";
                 return;
             }
 
-            await StopMonitoringAsync();
-            _traffic.Clear();
-            TrafficList.IsVisible = false;
-            EmptyTrafficText.IsVisible = true;
-
-            await _midiService.StartMonitoringAsync(selectedPort.Input.Id);
-            _monitoredEndpointId = selectedPort.Input.Id;
-            MonitorButton.Content = "Stop monitoring";
-            MonitorStatusText.Text = "Listening";
-            TrafficHelpText.Text = $"Listening to {selectedPort.Input.Name}.";
-            ActivityIndicator.Background = Brush.Parse("#D29922");
+            await StartMonitoringAsync(selectedPort);
         }
         catch (Exception exception)
         {
@@ -101,6 +97,42 @@ public partial class MainWindow : Window
         finally
         {
             MonitorButton.IsEnabled = selectedPort.Input is not null;
+        }
+    }
+
+    private async Task StartMonitoringAsync(MidiPortPairViewModel selectedPort)
+    {
+        if (_midiService is null || selectedPort.Input is null)
+        {
+            return;
+        }
+
+        MonitorButton.IsEnabled = false;
+        MonitorButton.Content = "Starting monitor…";
+
+        try
+        {
+            await StopMonitoringAsync();
+            _traffic.Clear();
+            TrafficList.IsVisible = false;
+            EmptyTrafficText.IsVisible = true;
+
+            await _midiService.StartMonitoringAsync(selectedPort.Input.Id);
+            _monitoredEndpointId = selectedPort.Input.Id;
+            MonitorButton.Content = $"Stop monitoring {selectedPort.DisplayName}";
+            MonitorStatusText.Text = "Listening";
+            TrafficHelpText.Text = $"Listening to {selectedPort.Input.Name}. Play a note or move a control.";
+            ActivityIndicator.Background = Brush.Parse("#D29922");
+        }
+        catch (Exception exception)
+        {
+            MonitorStatusText.Text = "Error";
+            TrafficHelpText.Text = exception.Message;
+            ActivityIndicator.Background = Brush.Parse("#F85149");
+        }
+        finally
+        {
+            MonitorButton.IsEnabled = true;
         }
     }
 
@@ -156,7 +188,7 @@ public partial class MainWindow : Window
 
         _monitoredEndpointId = null;
         MonitorStatusText.Text = "Waiting";
-        TrafficHelpText.Text = "Select a port, then start monitoring.";
+        TrafficHelpText.Text = "Select a port to start monitoring automatically.";
         ActivityIndicator.Background = Brush.Parse("#484F58");
 
         if (PortsList.SelectedItem is MidiPortPairViewModel selectedPort)

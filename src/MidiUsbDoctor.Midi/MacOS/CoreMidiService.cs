@@ -337,6 +337,7 @@ public sealed class CoreMidiService : IMidiService
         private const string CoreFoundation = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
         internal const uint Utf8Encoding = 0x08000100;
 
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         internal delegate void MidiReadProc(
             nint packetList,
             nint readProcReference,
@@ -426,4 +427,5 @@ public sealed class CoreMidiService : IMidiService
                 : throw new InvalidOperationException("CoreFoundation could not create a string.");
         }
     }
+
 }
