@@ -175,9 +175,68 @@ Selecting a row should reveal:
 - Diagnostic findings
 - Recommended DAW configuration
 
+## Feature roadmap
+
+### Now: working foundation
+
+The first technical version is working on macOS:
+
+- Avalonia desktop app running on .NET 10
+- H12 discovery through CoreMIDI
+- Eight virtual input/output port pairs displayed
+- Automatic monitoring when a port is selected
+- Live Note On, Note Off, CC, program change, pitch bend, clock, transport, and SysEx display
+- MIDI channel, note, velocity, controller, and value decoding
+- Bounded traffic history so busy MIDI streams do not freeze the UI
+- Manual device refresh and clear connected/empty states
+
+### Next: names and simple test results
+
+Turn the live monitor into something a musician can understand without reading individual MIDI messages:
+
+1. Let the user give each port a device name, such as `Bass Station II`.
+2. Save those names and restore them when the app restarts.
+3. Add a **Test this device** action.
+4. Ask the user to play notes and move controls for a short period.
+5. Display a plain-language result:
+
+```text
+Bass Station II
+
+H12 virtual port: 2
+Detected channel: 3
+Notes received: Yes
+Controls received: Yes
+Clock received: No
+Status: Working
+```
+
+### After that: diagnosis
+
+- Explain when no MIDI is arriving.
+- Warn when traffic is on a different channel or port than expected.
+- Distinguish an inactive instrument from a likely routing problem.
+- Show the most recent message and last activity time.
+- Add reconnect and device-disconnection handling.
+
+### Later: output tests and DAW help
+
+- Send a safe test note and always send the matching Note Off.
+- Test Control Change output.
+- Attempt SysEx Device Inquiry where supported.
+- Generate recommended Ableton Live settings.
+- Generate recommended Cubase settings.
+- Provide copy-friendly setup instructions.
+
+### Future investigation
+
+- Determine whether the CME routing matrix, filters, and mappings can be read safely.
+- Add Windows MIDI support behind the existing platform-neutral interface.
+- Package signed macOS and Windows releases.
+
 ## Delivery milestones
 
-### Milestone 1: endpoint discovery
+### Milestone 1: endpoint discovery — substantially complete
 
 - Create the .NET 10 solution and Avalonia shell on macOS.
 - Define the platform-neutral MIDI endpoint and message interfaces.
@@ -188,7 +247,9 @@ Selecting a row should reveal:
 
 **Success:** the app accurately lists the H12 endpoints exposed on macOS, and the UI/core can use a Windows adapter without redesign.
 
-### Milestone 2: live MIDI monitor
+The app currently supports manual refresh. Automatic hot-plug and disconnect notifications remain to be implemented.
+
+### Milestone 2: live MIDI monitor — working
 
 - Open multiple input endpoints.
 - Capture, timestamp, and decode messages.
@@ -197,7 +258,9 @@ Selecting a row should reveal:
 
 **Success:** playing each connected synth immediately identifies its system MIDI port, MIDI channel, and message type.
 
-### Milestone 3: labels and profiles
+The current version monitors the selected input automatically and displays a bounded live message history.
+
+### Milestone 3: labels and profiles — next
 
 - Let users name instruments and associate them with port pairs.
 - Persist the setup locally.
@@ -205,7 +268,7 @@ Selecting a row should reveal:
 
 **Success:** device labels survive an app restart and remain useful after reconnecting the hardware.
 
-### Milestone 4: guided tests and diagnostics
+### Milestone 4: guided tests and diagnostics — planned
 
 - Add a step-by-step input test.
 - Add safe outbound Note/CC tests with explicit port selection.
@@ -214,7 +277,7 @@ Selecting a row should reveal:
 
 **Success:** a user can determine whether a failure is at the instrument, CME/system routing, channel selection, or DAW configuration layer.
 
-### Milestone 5: DAW recommendations
+### Milestone 5: DAW recommendations — planned
 
 - Generate Ableton Live settings.
 - Generate Cubase settings.
@@ -222,7 +285,7 @@ Selecting a row should reveal:
 
 **Success:** recommendations are derived from observed port/channel data rather than guesses.
 
-### Milestone 6: CME routing awareness (investigation)
+### Milestone 6: CME routing awareness — future investigation
 
 - Research how CME's UxMIDI Tools reads the device routing matrix, mappings, and filters.
 - Look for a supported API or documented SysEx/USB protocol first.
